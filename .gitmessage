@@ -1,0 +1,30 @@
+# <type>(<scope>): <short summary>  ← 50 chars max, no period
+# |←————————————— 50 chars ——————————————→|
+#
+# WHY this change was made (wrap at 72 chars):
+# |←————————————————————— 72 chars ————————————————————→|
+#
+# ── Types ──────────────────────────────────────────────
+#  feat     new feature or capability
+#  fix      bug fix
+#  docker   Dockerfile / compose / image changes
+#  config   YAML params, .env, launch args
+#  world    Gazebo world / map files
+#  launch   ROS2 launch files
+#  test     adding or fixing tests
+#  docs     README, comments, docstrings
+#  chore    scaffolding, deps, repo setup
+#  refactor code restructure, no behaviour change
+#
+# ── Scopes (optional) ──────────────────────────────────
+#  metrics | adaptive | logger | dashboard
+#  nav2    | sim      | docker | tests
+#
+# ── Examples ───────────────────────────────────────────
+#  chore: initialise repository
+#  docker: add baseline simulation image
+#  feat: add odometry-based path tracking
+#  fix: resolve X11 socket permission on Ubuntu
+#  test: add unit tests for metrics helpers
+#  docs: add setup and usage instructions to README
+#
