@@ -14,22 +14,29 @@ from rcl_interfaces.srv import SetParameters
 from std_msgs.msg import Float64, Int32, String
 
 
-_PARAM_MAX_VEL  = ('controller_server', 'FollowPath.desired_linear_vel')
-_PARAM_ROT_VEL  = ('controller_server', 'FollowPath.rotate_to_heading_angular_vel')
-_PARAM_GOAL_TOL = ('controller_server', 'general_goal_checker.xy_goal_tolerance')
+# Nav2 nodes, their SetParameters service paths, and the parameters we tune.
+# local_costmap node is namespaced as local_costmap/local_costmap in Nav2.
+_PARAM_MAX_VEL      = ('controller_server', 'FollowPath.desired_linear_vel')
+_PARAM_GOAL_TOL     = ('controller_server', 'general_goal_checker.xy_goal_tolerance')
+_PARAM_COST_SCALING = ('local_costmap',     'inflation_layer.cost_scaling_factor')
+_PARAM_ROT_VEL      = ('controller_server', 'FollowPath.rotate_to_heading_angular_vel')
 
 _SERVICE_PATHS = {
     'controller_server': '/controller_server/set_parameters',
+    'local_costmap':     '/local_costmap/local_costmap/set_parameters',
 }
 
-_DEFAULT_MAX_VEL   = 0.20
-_DEFAULT_ROT_VEL   = 1.8
-_DEFAULT_GOAL_TOL  = 0.15
-_REDUCED_MAX_VEL   = 0.10
-_SLOW_ROT_VEL      = 0.9
-_RELAXED_GOAL_TOL  = 0.35
+_DEFAULT_MAX_VEL      = 0.20
+_DEFAULT_GOAL_TOL     = 0.15   # matches nav2_params*.yaml xy_goal_tolerance
+_DEFAULT_ROT_VEL      = 1.8    # matches nav2_params*.yaml rotate_to_heading_angular_vel
+_DEFAULT_COST_SCALING = 3.0    # matches nav2_params*.yaml cost_scaling_factor
 
-WINDOW = 5
+_REDUCED_MAX_VEL    = 0.10
+_RELAXED_GOAL_TOL   = 0.35
+_HIGH_COST_SCALING  = 8.0      # steeper cost gradient → planner prefers corridor centers
+_SLOW_ROT_VEL       = 0.9
+
+WINDOW = 5  # rolling window for metric averaging
 
 
 class AdaptiveBehaviorNode(LifecycleNode):
@@ -38,13 +45,16 @@ class AdaptiveBehaviorNode(LifecycleNode):
 
         self.declare_parameter('recovery_threshold', 3)
         self.declare_parameter('accuracy_threshold_m', 0.40)
+        self.declare_parameter('efficiency_threshold', 0.60)
         self.declare_parameter('check_period_sec', 5.0)
 
-        self._recovery_window: deque = deque(maxlen=WINDOW)
-        self._accuracy_window: deque = deque(maxlen=WINDOW)
+        self._recovery_window:   deque = deque(maxlen=WINDOW)
+        self._accuracy_window:   deque = deque(maxlen=WINDOW)
+        self._efficiency_window: deque = deque(maxlen=WINDOW)
 
-        self._current_max_vel  = _DEFAULT_MAX_VEL
-        self._current_goal_tol = _DEFAULT_GOAL_TOL
+        self._current_max_vel      = _DEFAULT_MAX_VEL
+        self._current_goal_tol     = _DEFAULT_GOAL_TOL
+        self._current_cost_scaling = _DEFAULT_COST_SCALING
 
         self._subs = []
         self._check_timer = None
@@ -60,6 +70,10 @@ class AdaptiveBehaviorNode(LifecycleNode):
         self._subs.append(self.create_subscription(
             Float64, '/nav_monitor/nav_accuracy',
             lambda m: self._accuracy_window.append(m.data), 10
+        ))
+        self._subs.append(self.create_subscription(
+            Float64, '/nav_monitor/path_efficiency',
+            lambda m: self._efficiency_window.append(m.data), 10
         ))
         self._subs.append(self.create_subscription(
             Int32, '/nav_monitor/recovery_count',
@@ -91,18 +105,22 @@ class AdaptiveBehaviorNode(LifecycleNode):
     # ── Adaptation logic ──────────────────────────────────────────────────
 
     def _evaluate_and_adapt(self) -> None:
-        if not any([self._recovery_window, self._accuracy_window]):
+        if not any([self._recovery_window, self._accuracy_window, self._efficiency_window]):
             return
 
-        avg_recovery = sum(self._recovery_window) / len(self._recovery_window) if self._recovery_window else 0
-        avg_accuracy = sum(self._accuracy_window) / len(self._accuracy_window) if self._accuracy_window else 0.0
+        avg_recovery   = sum(self._recovery_window)   / len(self._recovery_window)   if self._recovery_window   else 0
+        avg_accuracy   = sum(self._accuracy_window)   / len(self._accuracy_window)   if self._accuracy_window   else 0.0
+        avg_efficiency = sum(self._efficiency_window) / len(self._efficiency_window) if self._efficiency_window else 1.0
 
         rec_thresh = self.get_parameter('recovery_threshold').value
         acc_thresh = self.get_parameter('accuracy_threshold_m').value
+        eff_thresh = self.get_parameter('efficiency_threshold').value
 
         changes = {}
 
-        # Rule 1: frequent recoveries → slow down
+        # Rule 1: frequent recovery → slow down (linear & rotational velocity).
+        # Restore is gated on efficiency too, so Rule 3 can hold the velocity reduced
+        # even when recovery is low (otherwise the two rules ping-pong each tick).
         if avg_recovery >= rec_thresh:
             if self._current_max_vel > _REDUCED_MAX_VEL:
                 self._current_max_vel = _REDUCED_MAX_VEL
@@ -111,7 +129,7 @@ class AdaptiveBehaviorNode(LifecycleNode):
                 msg = f'Degradation: High recovery rate ({avg_recovery:.1f}). Slowing down.'
                 self.get_logger().warn(msg)
                 self._send_alert(msg)
-        elif avg_recovery < rec_thresh * 0.5:
+        elif avg_recovery < rec_thresh * 0.5 and avg_efficiency >= eff_thresh:
             if self._current_max_vel < _DEFAULT_MAX_VEL:
                 self._current_max_vel = _DEFAULT_MAX_VEL
                 changes[_PARAM_MAX_VEL] = _DEFAULT_MAX_VEL
@@ -131,6 +149,44 @@ class AdaptiveBehaviorNode(LifecycleNode):
                 self._current_goal_tol = _DEFAULT_GOAL_TOL
                 changes[_PARAM_GOAL_TOL] = _DEFAULT_GOAL_TOL
                 self.get_logger().info('Accuracy recovered, restoring goal tolerance')
+
+        # Rule 3: low efficiency → more conservative path planning.
+        # Steeper inflation cost gradient (higher cost_scaling_factor) makes the planner
+        # prefer paths down corridor centers and away from obstacle edges, without
+        # shrinking navigable space. Also reduces velocity for conservative execution.
+        # Inflation radius itself is kept at the per-world default (set in nav2_params*.yaml).
+        if avg_efficiency < eff_thresh:
+            changed = False
+            if self._current_cost_scaling < _HIGH_COST_SCALING:
+                self._current_cost_scaling = _HIGH_COST_SCALING
+                changes[_PARAM_COST_SCALING] = _HIGH_COST_SCALING
+                changed = True
+            if self._current_max_vel > _REDUCED_MAX_VEL:
+                self._current_max_vel = _REDUCED_MAX_VEL
+                changes[_PARAM_MAX_VEL] = _REDUCED_MAX_VEL
+                changes[_PARAM_ROT_VEL] = _SLOW_ROT_VEL
+                changed = True
+            if changed:
+                msg = (f'Low efficiency ({avg_efficiency:.2f}): conservative mode '
+                       f'— cost_scaling→{_HIGH_COST_SCALING}, vel→{_REDUCED_MAX_VEL}')
+                self.get_logger().warn(msg)
+                self._send_alert(msg)
+        elif avg_efficiency > 0.85:
+            changed = False
+            if self._current_cost_scaling > _DEFAULT_COST_SCALING:
+                self._current_cost_scaling = _DEFAULT_COST_SCALING
+                changes[_PARAM_COST_SCALING] = _DEFAULT_COST_SCALING
+                changed = True
+            # Restore velocity only if Rule 1 also doesn't need it reduced
+            if avg_recovery < rec_thresh * 0.5 and self._current_max_vel < _DEFAULT_MAX_VEL:
+                self._current_max_vel = _DEFAULT_MAX_VEL
+                changes[_PARAM_MAX_VEL] = _DEFAULT_MAX_VEL
+                changes[_PARAM_ROT_VEL] = _DEFAULT_ROT_VEL
+                changed = True
+            if changed:
+                self.get_logger().info(
+                    f'Efficiency recovered, restoring cost_scaling → {_DEFAULT_COST_SCALING}'
+                )
 
         if changes:
             self._apply_param_changes(changes)
