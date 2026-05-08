@@ -1,0 +1,172 @@
+"""
+Adaptive Behavior — lifecycle node that reads rolling metrics and dynamically
+reconfigures Nav2 parameters to compensate for poor navigation performance.
+"""
+import json
+import time
+from collections import deque
+from typing import Optional
+
+import rclpy
+from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
+from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
+from rcl_interfaces.srv import SetParameters
+from std_msgs.msg import Int32, String
+
+
+_PARAM_MAX_VEL = ('controller_server', 'FollowPath.desired_linear_vel')
+_PARAM_ROT_VEL = ('controller_server', 'FollowPath.rotate_to_heading_angular_vel')
+
+_SERVICE_PATHS = {
+    'controller_server': '/controller_server/set_parameters',
+}
+
+_DEFAULT_MAX_VEL  = 0.20
+_DEFAULT_ROT_VEL  = 1.8
+_REDUCED_MAX_VEL  = 0.10
+_SLOW_ROT_VEL     = 0.9
+
+WINDOW = 5
+
+
+class AdaptiveBehaviorNode(LifecycleNode):
+    def __init__(self):
+        super().__init__('adaptive_behavior')
+
+        self.declare_parameter('recovery_threshold', 3)
+        self.declare_parameter('check_period_sec', 5.0)
+
+        self._recovery_window: deque = deque(maxlen=WINDOW)
+        self._current_max_vel = _DEFAULT_MAX_VEL
+
+        self._subs = []
+        self._check_timer = None
+        self._param_clients: dict = {}
+        self._pub_adjustments: Optional[rclpy.publisher.Publisher] = None
+        self._pub_alerts: Optional[rclpy.publisher.Publisher] = None
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────
+
+    def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self.get_logger().info('Configuring adaptive_behavior')
+
+        self._subs.append(self.create_subscription(
+            Int32, '/nav_monitor/recovery_count',
+            lambda m: self._recovery_window.append(m.data), 10
+        ))
+
+        self._pub_adjustments = self.create_lifecycle_publisher(
+            String, '/nav_monitor/param_adjustments', 10
+        )
+        self._pub_alerts = self.create_lifecycle_publisher(
+            String, '/nav_monitor/alerts', 10
+        )
+
+        for node_name, svc_path in _SERVICE_PATHS.items():
+            self._param_clients[node_name] = self.create_client(SetParameters, svc_path)
+
+        return TransitionCallbackReturn.SUCCESS
+
+    def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        period = self.get_parameter('check_period_sec').value
+        self._check_timer = self.create_timer(period, self._evaluate_and_adapt)
+        return super().on_activate(state)
+
+    def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        if self._check_timer:
+            self._check_timer.cancel()
+        return super().on_deactivate(state)
+
+    # ── Adaptation logic ──────────────────────────────────────────────────
+
+    def _evaluate_and_adapt(self) -> None:
+        if not self._recovery_window:
+            return
+
+        avg_recovery = sum(self._recovery_window) / len(self._recovery_window)
+        rec_thresh   = self.get_parameter('recovery_threshold').value
+
+        changes = {}
+
+        # Rule 1: frequent recoveries → slow down
+        if avg_recovery >= rec_thresh:
+            if self._current_max_vel > _REDUCED_MAX_VEL:
+                self._current_max_vel = _REDUCED_MAX_VEL
+                changes[_PARAM_MAX_VEL] = _REDUCED_MAX_VEL
+                changes[_PARAM_ROT_VEL] = _SLOW_ROT_VEL
+                msg = f'Degradation: High recovery rate ({avg_recovery:.1f}). Slowing down.'
+                self.get_logger().warn(msg)
+                self._send_alert(msg)
+        elif avg_recovery < rec_thresh * 0.5:
+            if self._current_max_vel < _DEFAULT_MAX_VEL:
+                self._current_max_vel = _DEFAULT_MAX_VEL
+                changes[_PARAM_MAX_VEL] = _DEFAULT_MAX_VEL
+                changes[_PARAM_ROT_VEL] = _DEFAULT_ROT_VEL
+                self.get_logger().info('Recovery normal, restoring speeds')
+
+        if changes:
+            self._apply_param_changes(changes)
+
+    def _apply_param_changes(self, changes: dict) -> None:
+        by_node: dict = {}
+        for (node_name, param_name), value in changes.items():
+            by_node.setdefault(node_name, {})[param_name] = value
+
+        for node_name, params in by_node.items():
+            client = self._param_clients.get(node_name)
+            if client is None or not client.service_is_ready():
+                self.get_logger().debug(f'SetParameters service not ready for {node_name} — skipping')
+                continue
+
+            req = SetParameters.Request()
+            for pname, pval in params.items():
+                p = Parameter()
+                p.name = pname
+                p.value = ParameterValue(type=ParameterType.PARAMETER_DOUBLE, double_value=float(pval))
+                req.parameters.append(p)
+
+            future = client.call_async(req)
+            future.add_done_callback(
+                lambda f, nn=node_name: self._on_param_set_done(f, nn)
+            )
+
+        msg = String()
+        msg.data = json.dumps({'changes': {f'{n}.{p}': v for (n, p), v in changes.items()}})
+        self._pub_adjustments.publish(msg)
+
+    def _on_param_set_done(self, future, node_name: str) -> None:
+        try:
+            result = future.result()
+            for r in result.results:
+                if not r.successful:
+                    self.get_logger().warn(f'Parameter set failed on {node_name}: {r.reason}')
+        except Exception as e:
+            self.get_logger().error(f'SetParameters call to {node_name} raised: {e}')
+
+    def _send_alert(self, message: str) -> None:
+        if self._pub_alerts is None:
+            return
+        alert = {
+            'timestamp': time.time(),
+            'message': message
+        }
+        self._pub_alerts.publish(String(data=json.dumps(alert)))
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = AdaptiveBehaviorNode()
+    executor = rclpy.executors.SingleThreadedExecutor()
+    executor.add_node(node)
+    try:
+        node.trigger_configure()
+        node.trigger_activate()
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
