@@ -2,6 +2,12 @@
 Waypoint Patrol — cycles through world-specific waypoints via NavigateToPose.
 Designed for use with a pre-built AMCL map so localization is stable.
 Goals are sent programmatically, giving metrics_collector clean execution-time data.
+
+Manual interruption: if a goal is published to /goal_pose (e.g. via RViz2 "2D Goal Pose"),
+the patrol pauses, lets the robot complete the manual goal, then resumes from the next
+waypoint. Two flags prevent a race-condition between patrol cancellation and manual goal start:
+  _manual_pending  — /goal_pose received, waiting to see the goal enter EXECUTING state
+  _awaiting_manual — patrol is paused until the manual goal finishes
 """
 import math
 import time
@@ -9,7 +15,8 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from action_msgs.msg import GoalStatus
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+from action_msgs.msg import GoalStatus, GoalStatusArray
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped
 
@@ -32,11 +39,11 @@ _WAYPOINTS: dict = {
     ],
     'narrow': [
         ( 1.5, -4.0,   0),   # C1 east end
-        (-1.5, -2.2,   0),   # C3 west end
+        (-1.5, -2.2,   0),   # C3 west end  (robot traverses narrow C2 to reach here)
         ( 1.5, -2.2, 180),   # C3 east end
-        (-1.5, -0.4,   0),   # C5 west end
+        (-1.5, -0.4,   0),   # C5 west end  (robot traverses narrow C4 to reach here)
         ( 1.5, -0.4, 180),   # C5 east end
-        (-1.5, -4.0,   0),   # C1 west end
+        (-1.5, -4.0,   0),   # C1 west end  (return through all corridors)
     ],
 }
 
@@ -64,19 +71,48 @@ class WaypointPatrolNode(Node):
         self._waypoints = _WAYPOINTS.get(key, _WAYPOINTS['obstacles'])
         self._idx: int = 0
         self._goal_active: bool = False
-        self._next_send: float = time.monotonic() + 5.0
+        self._next_send: float = time.monotonic() + 5.0  # let Nav2 finish starting up
+
+        # Manual interruption state
+        self._manual_pending: bool = False   # /goal_pose arrived, waiting to see it EXECUTING
+        self._awaiting_manual: bool = False  # patrol paused until manual goal finishes
+        self._manual_start_time: float = 0.0
+        self._MANUAL_TIMEOUT_SEC: float = 120.0  # resume patrol if manual goal never clears
 
         self._goal_pub = self.create_publisher(PoseStamped, '/nav_monitor/target_pose', 10)
         self._client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+
+        # Detect manual goals from RViz2 "2D Goal Pose"
+        self.create_subscription(PoseStamped, '/goal_pose', self._on_manual_goal, 10)
+
+        # Monitor action status to know when manual goal completes
+        _status_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        self.create_subscription(
+            GoalStatusArray,
+            '/navigate_to_pose/_action/status',
+            self._on_action_status,
+            _status_qos,
+        )
 
         self.create_timer(1.0, self._tick)
         self.get_logger().info(
             f'Waypoint patrol ready — {len(self._waypoints)} waypoints for world "{key}"'
         )
 
-    # ── Patrol loop ───────────────────────────────────────────────────────
+    # ── Main patrol loop ──────────────────────────────────────────────────
 
     def _tick(self) -> None:
+        if self._awaiting_manual:
+            if time.monotonic() - self._manual_start_time > self._MANUAL_TIMEOUT_SEC:
+                self.get_logger().warn('Manual goal timeout — resuming patrol')
+                self._awaiting_manual = False
+                self._manual_pending = False
+                self._advance()
+            return
         if self._goal_active or time.monotonic() < self._next_send:
             return
         if not self._client.server_is_ready():
@@ -110,14 +146,53 @@ class WaypointPatrolNode(Node):
 
         if result and result.status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info(f'Reached ({x:.1f}, {y:.1f})')
+            self._advance()
+        elif self._awaiting_manual:
+            # Patrol goal was preempted by a manual RViz2 goal — don't advance yet.
+            # _on_action_status will call _advance() once the manual goal finishes.
+            self.get_logger().info(
+                f'Patrol paused at waypoint {self._idx + 1} — waiting for manual goal'
+            )
+            self._goal_active = False
         else:
             self.get_logger().warn(f'Goal ({x:.1f}, {y:.1f}) ended with status {status}')
-        self._advance()
+            self._advance()
 
     def _advance(self) -> None:
         self._idx = (self._idx + 1) % len(self._waypoints)
         self._next_send = time.monotonic() + self.get_parameter('loop_delay_sec').value
         self._goal_active = False
+
+    # ── Manual goal handling ──────────────────────────────────────────────
+
+    def _on_manual_goal(self, msg: PoseStamped) -> None:
+        """Called when user sends a 2D Goal Pose from RViz2."""
+        self.get_logger().info(
+            'Manual goal received — patrol will resume at next waypoint after completion'
+        )
+        self._manual_pending = True
+        self._awaiting_manual = True
+        self._manual_start_time = time.monotonic()
+
+    def _on_action_status(self, msg: GoalStatusArray) -> None:
+        """Track the Nav2 action status to detect when the manual goal finishes."""
+        if not self._awaiting_manual:
+            return
+
+        active_statuses = {GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING}
+        has_active = any(s.status in active_statuses for s in msg.status_list)
+
+        if self._manual_pending:
+            if has_active:
+                # Manual goal is now running — no longer just pending
+                self._manual_pending = False
+            return
+
+        # Manual goal was seen running; if nothing is active now, it finished
+        if not has_active:
+            self.get_logger().info('Manual goal finished — resuming patrol')
+            self._awaiting_manual = False
+            self._advance()
 
 
 def main(args=None):
