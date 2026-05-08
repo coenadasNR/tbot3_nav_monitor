@@ -11,20 +11,23 @@ import rclpy
 from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
 from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
 from rcl_interfaces.srv import SetParameters
-from std_msgs.msg import Int32, String
+from std_msgs.msg import Float64, Int32, String
 
 
-_PARAM_MAX_VEL = ('controller_server', 'FollowPath.desired_linear_vel')
-_PARAM_ROT_VEL = ('controller_server', 'FollowPath.rotate_to_heading_angular_vel')
+_PARAM_MAX_VEL  = ('controller_server', 'FollowPath.desired_linear_vel')
+_PARAM_ROT_VEL  = ('controller_server', 'FollowPath.rotate_to_heading_angular_vel')
+_PARAM_GOAL_TOL = ('controller_server', 'general_goal_checker.xy_goal_tolerance')
 
 _SERVICE_PATHS = {
     'controller_server': '/controller_server/set_parameters',
 }
 
-_DEFAULT_MAX_VEL  = 0.20
-_DEFAULT_ROT_VEL  = 1.8
-_REDUCED_MAX_VEL  = 0.10
-_SLOW_ROT_VEL     = 0.9
+_DEFAULT_MAX_VEL   = 0.20
+_DEFAULT_ROT_VEL   = 1.8
+_DEFAULT_GOAL_TOL  = 0.15
+_REDUCED_MAX_VEL   = 0.10
+_SLOW_ROT_VEL      = 0.9
+_RELAXED_GOAL_TOL  = 0.35
 
 WINDOW = 5
 
@@ -34,10 +37,14 @@ class AdaptiveBehaviorNode(LifecycleNode):
         super().__init__('adaptive_behavior')
 
         self.declare_parameter('recovery_threshold', 3)
+        self.declare_parameter('accuracy_threshold_m', 0.40)
         self.declare_parameter('check_period_sec', 5.0)
 
         self._recovery_window: deque = deque(maxlen=WINDOW)
-        self._current_max_vel = _DEFAULT_MAX_VEL
+        self._accuracy_window: deque = deque(maxlen=WINDOW)
+
+        self._current_max_vel  = _DEFAULT_MAX_VEL
+        self._current_goal_tol = _DEFAULT_GOAL_TOL
 
         self._subs = []
         self._check_timer = None
@@ -50,6 +57,10 @@ class AdaptiveBehaviorNode(LifecycleNode):
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info('Configuring adaptive_behavior')
 
+        self._subs.append(self.create_subscription(
+            Float64, '/nav_monitor/nav_accuracy',
+            lambda m: self._accuracy_window.append(m.data), 10
+        ))
         self._subs.append(self.create_subscription(
             Int32, '/nav_monitor/recovery_count',
             lambda m: self._recovery_window.append(m.data), 10
@@ -80,11 +91,14 @@ class AdaptiveBehaviorNode(LifecycleNode):
     # ── Adaptation logic ──────────────────────────────────────────────────
 
     def _evaluate_and_adapt(self) -> None:
-        if not self._recovery_window:
+        if not any([self._recovery_window, self._accuracy_window]):
             return
 
-        avg_recovery = sum(self._recovery_window) / len(self._recovery_window)
-        rec_thresh   = self.get_parameter('recovery_threshold').value
+        avg_recovery = sum(self._recovery_window) / len(self._recovery_window) if self._recovery_window else 0
+        avg_accuracy = sum(self._accuracy_window) / len(self._accuracy_window) if self._accuracy_window else 0.0
+
+        rec_thresh = self.get_parameter('recovery_threshold').value
+        acc_thresh = self.get_parameter('accuracy_threshold_m').value
 
         changes = {}
 
@@ -103,6 +117,20 @@ class AdaptiveBehaviorNode(LifecycleNode):
                 changes[_PARAM_MAX_VEL] = _DEFAULT_MAX_VEL
                 changes[_PARAM_ROT_VEL] = _DEFAULT_ROT_VEL
                 self.get_logger().info('Recovery normal, restoring speeds')
+
+        # Rule 2: poor accuracy → relax goal tolerance
+        if avg_accuracy > acc_thresh:
+            if self._current_goal_tol < _RELAXED_GOAL_TOL:
+                self._current_goal_tol = _RELAXED_GOAL_TOL
+                changes[_PARAM_GOAL_TOL] = _RELAXED_GOAL_TOL
+                msg = f'Degradation: Poor accuracy ({avg_accuracy:.3f}m). Relaxing tolerance.'
+                self.get_logger().warn(msg)
+                self._send_alert(msg)
+        elif avg_accuracy < acc_thresh * 0.5:
+            if self._current_goal_tol > _DEFAULT_GOAL_TOL:
+                self._current_goal_tol = _DEFAULT_GOAL_TOL
+                changes[_PARAM_GOAL_TOL] = _DEFAULT_GOAL_TOL
+                self.get_logger().info('Accuracy recovered, restoring goal tolerance')
 
         if changes:
             self._apply_param_changes(changes)
