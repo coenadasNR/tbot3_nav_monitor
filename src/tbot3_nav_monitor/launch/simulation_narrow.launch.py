@@ -89,4 +89,15 @@ def generate_launch_description():
                               'params_file': nav2_params, 'slam': 'False'}.items(),
             condition=IfCondition(PythonExpression(["'", mode, "' == 'amcl'"])),
         ),
+
+        # 5. Dynamic obstacles — delayed so Gazebo finishes spawning models first
+        TimerAction(period=5.0, actions=[
+            Node(
+                package='tbot3_nav_monitor',
+                executable='dynamic_obstacles',
+                name='dynamic_obstacles',
+                parameters=[{'speed': 0.2, 'half_period_sec': 5.0}],
+                output='screen',
+            ),
+        ]),
     ])

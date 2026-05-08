@@ -30,6 +30,7 @@ setup(
             'data_logger        = tbot3_nav_monitor.data_logger:main',
             'web_dashboard      = tbot3_nav_monitor.web_dashboard:main',
             'waypoint_patrol    = tbot3_nav_monitor.waypoint_patrol:main',
+            'dynamic_obstacles  = tbot3_nav_monitor.dynamic_obstacles:main',
         ],
     },
 )
