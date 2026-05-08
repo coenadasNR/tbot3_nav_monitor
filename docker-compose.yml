@@ -28,7 +28,7 @@ services:
     privileged: true
     command: >
       ros2 launch tbot3_nav_monitor
-      simulation_obstacles.launch.py
+      simulation_${WORLD:?WORLD must be set}.launch.py
       mode:=${MODE:-slam}
 
 networks:
