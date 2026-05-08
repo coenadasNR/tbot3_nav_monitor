@@ -33,6 +33,7 @@ _HTML = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TurtleBot3 Nav Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; }
@@ -74,6 +75,9 @@ _HTML = """
 
   .section { padding:0 2rem 2rem; }
   .section h2 { color:#4a90d9; font-size:1rem; margin-bottom:1rem; text-transform:uppercase; letter-spacing:1px; }
+  .charts { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:1rem; }
+  .chart-box { background:#1a1a2e; border-radius:8px; padding:1rem; }
+  .chart-box h3 { font-size:0.75rem; color:#888; text-transform:uppercase; letter-spacing:1px; margin-bottom:0.5rem; }
 
   table { width:100%; border-collapse:collapse; font-size:0.85rem; }
   th { background:#1a1a2e; padding:0.6rem 1rem; text-align:left; color:#4a90d9; font-weight:600; }
@@ -128,6 +132,16 @@ _HTML = """
 <!-- Metric cards -->
 <div class="grid" id="cards"></div>
 
+<!-- Live Charts -->
+<div class="section">
+  <h2>&#x1F4C8; Live Trends (last 60 s)</h2>
+  <div class="charts">
+    <div class="chart-box"><h3>Nav Accuracy (m)</h3><canvas id="chartAccuracy"></canvas></div>
+    <div class="chart-box"><h3>Path Efficiency (%)</h3><canvas id="chartEfficiency"></canvas></div>
+    <div class="chart-box"><h3>Recovery Count</h3><canvas id="chartRecovery"></canvas></div>
+  </div>
+</div>
+
 <!-- Summary -->
 <div class="section">
   <h2>&#x1F4CA; Multi-Environment Summary</h2>
@@ -154,6 +168,25 @@ const GOAL_CFG = {
   SUCCEEDED: { cls: 'status-succeeded', icon: '&#x2713;', pulse: false },
   FAILED:    { cls: 'status-failed',    icon: '&#x2717;', pulse: false },
 };
+
+// Charts
+const HISTORY = 30;
+const labels  = Array(HISTORY).fill('');
+const mkData  = () => Array(HISTORY).fill(null);
+
+const chartCfg = (label, color, data, yMin, yMax) => ({
+  type: 'line',
+  data: { labels, datasets: [{ label, data, borderColor: color, backgroundColor: color + '22', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: true }] },
+  options: { animation: false, plugins: { legend: { display: false } },
+    scales: { x: { display: false }, y: { min: yMin, max: yMax, ticks: { color: '#888', maxTicksLimit: 4 }, grid: { color: '#222' } } } }
+});
+
+const accData = mkData(), effData = mkData(), recData = mkData();
+const cAcc = new Chart(document.getElementById('chartAccuracy'),   chartCfg('Accuracy',   '#e74c3c', accData, 0, 0.6));
+const cEff = new Chart(document.getElementById('chartEfficiency'), chartCfg('Efficiency', '#2ecc71', effData, 0, 100));
+const cRec = new Chart(document.getElementById('chartRecovery'),   chartCfg('Recoveries', '#f0a500', recData, 0, 10));
+
+function pushChart(chart, arr, v) { arr.shift(); arr.push(v); chart.update('none'); }
 
 async function refresh() {
   try {
@@ -190,6 +223,10 @@ async function refresh() {
     document.getElementById('cards').innerHTML = cards.map(c =>
       `<div class="card ${c.cls||''}"><h2>${c.label}</h2><div class="value">${c.value}</div><div class="unit">${c.unit}</div></div>`
     ).join('');
+
+    pushChart(cAcc, accData, d.nav_accuracy_m);
+    pushChart(cEff, effData, d.path_efficiency * 100);
+    pushChart(cRec, recData, d.recovery_count);
 
     const ar = await fetch('/api/alerts');
     const al = await ar.json();
@@ -321,6 +358,7 @@ class WebDashboardNode(LifecycleNode):
     def _alerts_cb(self, msg: String) -> None:
         try:
             data = json.loads(msg.data)
+            # Store raw ts + message — browser formats timestamp in local timezone
             self._alert_log.append({
                 'ts':  data.get('timestamp', 0),
                 'msg': data.get('message', ''),
