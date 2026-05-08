@@ -242,13 +242,16 @@ class MetricsCollectorNode(LifecycleNode):
     def _handle_goal_end(self, status: int) -> None:
         self.get_logger().info(f'Goal ended with status {status}')
 
-        self._last_exec_time  = time.monotonic() - self._goal_start_time
-        self._last_accuracy_m = compute_accuracy(self._current_pose, self._active_target_pose)
-        self._last_efficiency = compute_efficiency(
-            self._active_target_pose, self._start_pose, self._path_length_m
-        )
+        self._last_exec_time = time.monotonic() - self._goal_start_time
 
         if status == GoalStatus.STATUS_SUCCEEDED:
+            # Only update quality metrics on success; cancelled/aborted goals never reached
+            # the target so their accuracy/efficiency readings are meaningless and would
+            # pollute adaptive_behavior's rolling windows.
+            self._last_accuracy_m = compute_accuracy(self._current_pose, self._active_target_pose)
+            self._last_efficiency = compute_efficiency(
+                self._active_target_pose, self._start_pose, self._path_length_m
+            )
             self._goals_completed += 1
             self._goal_status = 'SUCCEEDED'
         else:
