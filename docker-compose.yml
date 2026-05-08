@@ -28,8 +28,35 @@ services:
     privileged: true
     command: >
       ros2 launch tbot3_nav_monitor
-      simulation_${WORLD:?WORLD must be set}.launch.py
+      simulation_${WORLD:?WORLD must be set to obstacles, house, or narrow}.launch.py
       mode:=${MODE:-slam}
+
+  # ── Monitor nodes ──────────────────────────────────────────────────────────
+  monitor:
+    image: tbot3_nav_monitor:latest
+    build:
+      context: .
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+      - TURTLEBOT3_MODEL=burger
+    volumes:
+      - ./data:/ros2_ws/data:rw
+      - /dev/shm:/dev/shm
+    networks:
+      - ros_net
+    ipc: host
+    ports:
+      - "8080:8080"
+    depends_on:
+      - sim
+    command: bash -c "
+      echo '[monitor] Waiting for Nav2 action server...';
+      until ros2 action list 2>/dev/null | grep -q navigate_to_pose; do sleep 3; done;
+      echo '[monitor] Nav2 ready — launching monitor nodes';
+      ros2 launch tbot3_nav_monitor monitor.launch.py
+        world:=${WORLD:?WORLD must be set}
+        dashboard_port:=${DASHBOARD_PORT:-8080}"
 
 networks:
   ros_net:
