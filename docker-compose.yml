@@ -1,0 +1,38 @@
+# Cross-platform TurtleBot3 Nav Monitor
+#
+#   Linux / Mac  →  ./scripts/run_compose.sh   (auto-detects OS)
+#   Windows      →  .\scripts\run_windows.ps1  (requires VcXsrv)
+#
+# WORLD required: obstacles | house | narrow
+# MODE optional:  slam (default) | amcl
+
+services:
+
+  # ── Gazebo + Nav2 ─────────────────────────────────────────────────────────
+  sim:
+    image: tbot3_nav_monitor:latest
+    build:
+      context: .
+    environment:
+      - DISPLAY=${DISPLAY:-host.docker.internal:0}
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - TURTLEBOT3_MODEL=burger
+    volumes:
+      - ./maps:/ros2_ws/maps:rw
+      - /dev/shm:/dev/shm
+    networks:
+      - ros_net
+    ipc: host
+    privileged: true
+    command: >
+      ros2 launch tbot3_nav_monitor
+      simulation_obstacles.launch.py
+      mode:=${MODE:-slam}
+
+networks:
+  ros_net:
+    driver: bridge
+
+volumes: {}

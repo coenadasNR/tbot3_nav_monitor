@@ -1,0 +1,6 @@
+# Linux override — adds the X11 Unix socket for local display.
+# Applied automatically by run_compose.sh on Linux; not used on Mac/Windows.
+services:
+  sim:
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
