@@ -2,6 +2,7 @@
 import math
 import sys
 import os
+from unittest.mock import MagicMock
 import pytest
 
 # Stub out every ROS2 import so the module loads without a live ROS installation
@@ -17,10 +18,10 @@ _MOCKS = [
 ]
 for _m in _MOCKS:
     if _m not in sys.modules:
-        from unittest.mock import MagicMock
         sys.modules[_m] = MagicMock()
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+import tbot3_nav_monitor.metrics_collector as mc
 from tbot3_nav_monitor.metrics_collector import compute_accuracy, compute_efficiency
 
 
@@ -79,3 +80,94 @@ def test_efficiency_none_goal():
 
 def test_efficiency_none_start():
     assert compute_efficiency((1.0, 0.0), None, 1.0) == pytest.approx(0.0)
+
+
+# ── lifecycle transitions ──────────────────────────────────────────────────
+
+def _make_lifecycle_node():
+    node = mc.MetricsCollectorNode.__new__(mc.MetricsCollectorNode)
+    node.get_logger = MagicMock(return_value=MagicMock())
+    node.get_parameter = MagicMock(return_value=type('P', (), {'value': 2.0})())
+    node.create_timer = MagicMock()
+    node.destroy_timer = MagicMock()
+    node.destroy_subscription = MagicMock()
+    node.destroy_publisher = MagicMock()
+    node._publish_metrics = MagicMock()
+    node._metrics_timer = None
+    node._pose_timer = None
+    node._subs = []
+    node._status_sub = None
+    node._feedback_sub = None
+    node._pub_exec_time = None
+    node._pub_accuracy = None
+    node._pub_efficiency = None
+    node._pub_battery = None
+    node._pub_recovery = None
+    node._pub_status = None
+    node._pub_alerts = None
+    return node
+
+
+def test_on_activate_replaces_existing_metrics_timer():
+    node = _make_lifecycle_node()
+    old_timer = MagicMock()
+    new_timer = MagicMock()
+    node._metrics_timer = old_timer
+    node.create_timer.return_value = new_timer
+
+    node.on_activate(None)
+
+    node.destroy_timer.assert_called_once_with(old_timer)
+    node.create_timer.assert_called_once()
+    assert node._metrics_timer is new_timer
+
+
+def test_on_deactivate_cancels_and_destroys_metrics_timer():
+    node = _make_lifecycle_node()
+    timer = MagicMock()
+    node._metrics_timer = timer
+
+    node.on_deactivate(None)
+
+    timer.cancel.assert_called_once()
+    node.destroy_timer.assert_called_once_with(timer)
+    assert node._metrics_timer is None
+
+
+def test_on_cleanup_releases_timers_subscriptions_and_publishers():
+    node = _make_lifecycle_node()
+    metrics_timer = MagicMock()
+    pose_timer = MagicMock()
+    node._metrics_timer = metrics_timer
+    node._pose_timer = pose_timer
+    node._subs = [MagicMock(), MagicMock()]
+    node._status_sub = MagicMock()
+    node._feedback_sub = MagicMock()
+    node._pub_exec_time = MagicMock()
+    node._pub_accuracy = MagicMock()
+    node._pub_efficiency = MagicMock()
+    node._pub_battery = MagicMock()
+    node._pub_recovery = MagicMock()
+    node._pub_status = MagicMock()
+    node._pub_alerts = MagicMock()
+
+    node.on_cleanup(None)
+
+    metrics_timer.cancel.assert_called_once()
+    pose_timer.cancel.assert_called_once()
+    assert node.destroy_timer.call_count == 2
+    assert node.destroy_subscription.call_count == 4
+    assert node.destroy_publisher.call_count == 7
+
+    assert node._metrics_timer is None
+    assert node._pose_timer is None
+    assert node._subs == []
+    assert node._status_sub is None
+    assert node._feedback_sub is None
+    assert node._pub_exec_time is None
+    assert node._pub_accuracy is None
+    assert node._pub_efficiency is None
+    assert node._pub_battery is None
+    assert node._pub_recovery is None
+    assert node._pub_status is None
+    assert node._pub_alerts is None

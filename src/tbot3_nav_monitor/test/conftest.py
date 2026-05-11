@@ -16,11 +16,14 @@ class _LifecycleNode:
     def __init__(self, *a, **kw): pass
     def get_logger(self): return MagicMock()
     def get_clock(self): return MagicMock()
+    def on_activate(self, state): return 0
+    def on_deactivate(self, state): return 0
     def declare_parameter(self, *a, **kw): pass
     def get_parameter(self, name): m = MagicMock(); m.value = 0; return m
     def create_subscription(self, *a, **kw): return MagicMock()
     def create_lifecycle_publisher(self, *a, **kw): return MagicMock()
     def create_client(self, *a, **kw): return MagicMock()
+    def create_action_client(self, *a, **kw): return MagicMock()
     def create_timer(self, *a, **kw): return MagicMock()
     def destroy_node(self): pass
 

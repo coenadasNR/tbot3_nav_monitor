@@ -1,4 +1,5 @@
 """Unit tests for AdaptiveBehaviorNode decision logic (no ROS2 runtime required)."""
+import json
 import os
 import sys
 from collections import deque
@@ -210,3 +211,54 @@ def test_no_oscillation_at_efficiency_threshold():
         node._evaluate_and_adapt()
     assert node._current_cost_scaling == ab._HIGH_COST_SCALING
     assert node._current_max_vel == ab._REDUCED_MAX_VEL
+
+
+def test_apply_param_changes_publishes_only_ready_services():
+    node = _make_node()
+
+    ready_client = MagicMock()
+    ready_client.service_is_ready.return_value = True
+    ready_future = MagicMock()
+    ready_client.call_async.return_value = ready_future
+
+    not_ready_client = MagicMock()
+    not_ready_client.service_is_ready.return_value = False
+
+    node._param_clients = {
+        'controller_server': ready_client,
+        'local_costmap': not_ready_client,
+    }
+
+    node._apply_param_changes({
+        ab._PARAM_MAX_VEL: 0.1,
+        ab._PARAM_COST_SCALING: 8.0,
+    })
+
+    ready_client.call_async.assert_called_once()
+    not_ready_client.call_async.assert_not_called()
+    node._pub_adjustments.publish.assert_called_once()
+
+    payload = json.loads(node._pub_adjustments.publish.call_args[0][0].data)
+    assert 'controller_server.FollowPath.desired_linear_vel' in payload['changes']
+    assert 'local_costmap.inflation_layer.cost_scaling_factor' not in payload['changes']
+
+
+def test_apply_param_changes_skips_publish_when_no_services_ready():
+    node = _make_node()
+
+    c1 = MagicMock()
+    c1.service_is_ready.return_value = False
+    c2 = MagicMock()
+    c2.service_is_ready.return_value = False
+    node._param_clients = {
+        'controller_server': c1,
+        'local_costmap': c2,
+    }
+
+    node._apply_param_changes({
+        ab._PARAM_MAX_VEL: 0.1,
+    })
+
+    c1.call_async.assert_not_called()
+    c2.call_async.assert_not_called()
+    node._pub_adjustments.publish.assert_not_called()
