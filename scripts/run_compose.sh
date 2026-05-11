@@ -10,8 +10,8 @@
 #   1. WORLD=<w> ./scripts/run_compose.sh
 #   2. docker compose exec sim ros2 run teleop_twist_keyboard teleop_twist_keyboard
 #   3. Drive until map is complete, then:
-#      docker compose -f docker-compose.yml -f docker-compose.linux.yml exec sim \
-#        bash /ros2_ws/scripts/save_map.sh <world>
+#      Linux: docker compose -f docker-compose.yml -f docker-compose.linux.yml exec sim bash /ros2_ws/scripts/save_map.sh <world>
+#      macOS: docker compose -f docker-compose.yml -f docker-compose.mac.yml exec sim bash /ros2_ws/scripts/save_map.sh <world>
 #   4. Ctrl-C, then relaunch with MODE=amcl
 
 set -e
@@ -43,16 +43,9 @@ if [ "$OS" = "Linux" ]; then
   COMPOSE_FILES="-f docker-compose.yml -f docker-compose.linux.yml"
 
 elif [ "$OS" = "Darwin" ]; then
-  echo "[run_compose] Platform: macOS"
-  # Requires XQuartz — install with: brew install --cask xquartz
-  if ! pgrep -qx "Xquartz" 2>/dev/null; then
-    echo "[run_compose] WARNING: XQuartz does not appear to be running."
-    echo "             Install: brew install --cask xquartz"
-    echo "             Then open XQuartz, go to Preferences → Security, enable 'Allow connections from network clients'"
-  fi
-  xhost + 127.0.0.1 2>/dev/null || true
-  export DISPLAY="host.docker.internal:0"
-  COMPOSE_FILES="-f docker-compose.yml"
+  echo "[run_compose] Platform: macOS — using in-container VNC (no XQuartz needed)"
+  echo "[run_compose] Gazebo/RViz2 will be available at http://localhost:6080"
+  COMPOSE_FILES="-f docker-compose.yml -f docker-compose.mac.yml"
 
 else
   echo "[run_compose] Windows detected — use scripts/run_windows.ps1 instead."

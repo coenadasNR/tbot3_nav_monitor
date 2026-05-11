@@ -1,0 +1,12 @@
+# macOS overlay — replaces X11 forwarding with an in-container virtual
+# framebuffer + VNC + noVNC stack.
+#
+# No XQuartz required on the host.
+# Open http://localhost:6080 in any browser to see Gazebo / RViz2.
+services:
+  sim:
+    environment:
+      - DISPLAY=:99
+    entrypoint: ["/ros2_ws/scripts/start_vnc.sh"]
+    ports:
+      - "6080:6080"

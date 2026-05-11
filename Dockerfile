@@ -71,6 +71,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxkbcommon-x11-0 \
     libxcb-xinerama0 \
+    xvfb \
+    x11vnc \
+    novnc \
+    websockify \
     && pip3 install --no-cache-dir flask flask-cors pandas numpy \
     && rm -rf /var/lib/apt/lists/*
 

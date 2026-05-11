@@ -59,7 +59,7 @@ All inter-node communication uses ROS2 topics (`/nav_monitor/*`). The monitor su
 |---|---|
 | **All** | Docker Desktop (or Docker Engine + Compose v2) |
 | **Linux** | Native X11 (already present); the Linux-specific compose override mounts `/tmp/.X11-unix` |
-| **macOS** | [XQuartz](https://www.xquartz.org/) — Preferences → Security → "Allow connections from network clients" |
+| **macOS** | Nothing — Gazebo/RViz2 run inside a VNC container, open `http://localhost:6080` in any browser |
 | **Windows** | [VcXsrv](https://sourceforge.net/projects/vcxsrv/) — install it and `run_windows.ps1` will start it automatically with the correct flags |
 
 No ROS2 installation is required on the host. Everything runs inside the container; the dashboard is reachable from the host browser.
