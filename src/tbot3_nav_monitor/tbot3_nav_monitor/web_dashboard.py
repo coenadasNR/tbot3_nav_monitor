@@ -16,6 +16,7 @@ from std_msgs.msg import String
 try:
     from flask import Flask, jsonify, render_template_string
     from flask_cors import CORS
+    from werkzeug.serving import make_server
     _FLASK_OK = True
 except ImportError:
     _FLASK_OK = False
@@ -312,6 +313,9 @@ class WebDashboardNode(LifecycleNode):
         self._last_raw: str = ''
         self._summary_cache = None
         self._summary_cache_time: float = 0.0
+        self._subs = []
+        self._http_server = None
+        self._http_thread = None
 
     # ── Lifecycle callbacks ────────────────────────────────────────────────
 
@@ -319,12 +323,12 @@ class WebDashboardNode(LifecycleNode):
         self.get_logger().info('Configuring web_dashboard')
 
         best_effort = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-        self.create_subscription(
+        self._subs.append(self.create_subscription(
             String, '/nav_monitor/live_data', self._metrics_cb, qos_profile=best_effort
-        )
-        self.create_subscription(
+        ))
+        self._subs.append(self.create_subscription(
             String, '/nav_monitor/alerts', self._alerts_cb, 10
-        )
+        ))
         return TransitionCallbackReturn.SUCCESS
 
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
@@ -336,12 +340,18 @@ class WebDashboardNode(LifecycleNode):
         return super().on_activate(state)
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self._stop_flask()
         return super().on_deactivate(state)
 
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self._stop_flask()
+        for sub in self._subs:
+            self.destroy_subscription(sub)
+        self._subs.clear()
         return TransitionCallbackReturn.SUCCESS
 
     def on_shutdown(self, state: LifecycleState) -> TransitionCallbackReturn:
+        self._stop_flask()
         return TransitionCallbackReturn.SUCCESS
 
     # ── ROS callbacks ─────────────────────────────────────────────────────
@@ -371,6 +381,9 @@ class WebDashboardNode(LifecycleNode):
     # ── Flask server ───────────────────────────────────────────────────────
 
     def _start_flask(self) -> None:
+        if self._http_server is not None:
+            return
+
         app = Flask(__name__)
         CORS(app)
         node_ref = self
@@ -435,11 +448,23 @@ class WebDashboardNode(LifecycleNode):
             return jsonify(summary)
 
         port = self.get_parameter('port').value
-        threading.Thread(
-            target=lambda: app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False),
+        self._http_server = make_server('0.0.0.0', port, app)
+        self._http_thread = threading.Thread(
+            target=self._http_server.serve_forever,
             daemon=True,
-        ).start()
+        )
+        self._http_thread.start()
         self.get_logger().info(f'Web dashboard running on http://0.0.0.0:{port}')
+
+    def _stop_flask(self) -> None:
+        if self._http_server is None:
+            return
+        self._http_server.shutdown()
+        self._http_server.server_close()
+        if self._http_thread is not None:
+            self._http_thread.join(timeout=2.0)
+        self._http_server = None
+        self._http_thread = None
 
 
 def main(args=None):

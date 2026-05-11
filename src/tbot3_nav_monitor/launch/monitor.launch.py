@@ -11,10 +11,11 @@ def generate_launch_description():
     pkg = 'tbot3_nav_monitor'
 
     return LaunchDescription([
-        DeclareLaunchArgument('world',          default_value='unknown'),
-        DeclareLaunchArgument('dashboard_port', default_value='8080'),
-        DeclareLaunchArgument('data_dir',       default_value='/ros2_ws/data/csv'),
-        DeclareLaunchArgument('use_sim_time',   default_value='true'),
+        DeclareLaunchArgument('world',                  default_value='unknown'),
+        DeclareLaunchArgument('dashboard_port',          default_value='8080'),
+        DeclareLaunchArgument('data_dir',                default_value='/ros2_ws/data/csv'),
+        DeclareLaunchArgument('use_sim_time',            default_value='true'),
+        DeclareLaunchArgument('nav2_ready_timeout_sec',  default_value='30.0'),
 
         Node(
             package=pkg,
@@ -25,6 +26,7 @@ def generate_launch_description():
                 'world': LaunchConfiguration('world'),
                 'publish_rate_hz': 2.0,
                 'battery_drain_per_meter': 0.05,
+                'nav2_ready_timeout_sec': LaunchConfiguration('nav2_ready_timeout_sec'),
             }],
             output='screen',
         ),
@@ -39,6 +41,7 @@ def generate_launch_description():
                 'accuracy_threshold_m': 0.40,
                 'efficiency_threshold': 0.60,
                 'check_period_sec': 5.0,
+                'nav2_ready_timeout_sec': LaunchConfiguration('nav2_ready_timeout_sec'),
             }],
             output='screen',
         ),

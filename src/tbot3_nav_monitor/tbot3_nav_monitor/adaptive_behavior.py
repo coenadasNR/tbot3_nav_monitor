@@ -47,6 +47,7 @@ class AdaptiveBehaviorNode(LifecycleNode):
         self.declare_parameter('accuracy_threshold_m', 0.40)
         self.declare_parameter('efficiency_threshold', 0.60)
         self.declare_parameter('check_period_sec', 5.0)
+        self.declare_parameter('nav2_ready_timeout_sec', 30.0)
 
         self._recovery_window:   deque = deque(maxlen=WINDOW)
         self._accuracy_window:   deque = deque(maxlen=WINDOW)
@@ -93,14 +94,54 @@ class AdaptiveBehaviorNode(LifecycleNode):
         return TransitionCallbackReturn.SUCCESS
 
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
+        timeout = self.get_parameter('nav2_ready_timeout_sec').value
+        self.get_logger().info(
+            f'Waiting for Nav2 SetParameters services (timeout={timeout:.0f}s)...'
+        )
+        for node_name, client in self._param_clients.items():
+            if not client.wait_for_service(timeout_sec=timeout):
+                self.get_logger().warn(
+                    f'Nav2 SetParameters not available for {node_name} within timeout '
+                    '— adaptive rules will apply once Nav2 comes up'
+                )
+            else:
+                self.get_logger().info(f'Nav2 {node_name} SetParameters ready.')
+
         period = self.get_parameter('check_period_sec').value
+        if self._check_timer:
+            self.destroy_timer(self._check_timer)
         self._check_timer = self.create_timer(period, self._evaluate_and_adapt)
         return super().on_activate(state)
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
         if self._check_timer:
             self._check_timer.cancel()
+            self.destroy_timer(self._check_timer)
+            self._check_timer = None
         return super().on_deactivate(state)
+
+    def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
+        if self._check_timer:
+            self._check_timer.cancel()
+            self.destroy_timer(self._check_timer)
+            self._check_timer = None
+
+        for sub in self._subs:
+            self.destroy_subscription(sub)
+        self._subs.clear()
+
+        for client in self._param_clients.values():
+            self.destroy_client(client)
+        self._param_clients.clear()
+
+        if self._pub_adjustments is not None:
+            self.destroy_publisher(self._pub_adjustments)
+            self._pub_adjustments = None
+        if self._pub_alerts is not None:
+            self.destroy_publisher(self._pub_alerts)
+            self._pub_alerts = None
+
+        return TransitionCallbackReturn.SUCCESS
 
     # ── Adaptation logic ──────────────────────────────────────────────────
 
@@ -196,6 +237,8 @@ class AdaptiveBehaviorNode(LifecycleNode):
         for (node_name, param_name), value in changes.items():
             by_node.setdefault(node_name, {})[param_name] = value
 
+        applied_changes = {}
+
         for node_name, params in by_node.items():
             client = self._param_clients.get(node_name)
             if client is None or not client.service_is_ready():
@@ -213,9 +256,15 @@ class AdaptiveBehaviorNode(LifecycleNode):
             future.add_done_callback(
                 lambda f, nn=node_name: self._on_param_set_done(f, nn)
             )
+            for pname, pval in params.items():
+                applied_changes[(node_name, pname)] = pval
+
+        if not applied_changes:
+            self.get_logger().debug('No SetParameters services ready; no adjustments published')
+            return
 
         msg = String()
-        msg.data = json.dumps({'changes': {f'{n}.{p}': v for (n, p), v in changes.items()}})
+        msg.data = json.dumps({'changes': {f'{n}.{p}': v for (n, p), v in applied_changes.items()}})
         self._pub_adjustments.publish(msg)
 
     def _on_param_set_done(self, future, node_name: str) -> None:
@@ -249,6 +298,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        node.trigger_deactivate()
+        node.trigger_cleanup()
         node.destroy_node()
         rclpy.shutdown()
 

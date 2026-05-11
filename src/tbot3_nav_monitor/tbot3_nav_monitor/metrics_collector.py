@@ -8,6 +8,7 @@ import json
 from typing import Optional
 
 import rclpy
+from rclpy.action import ActionClient
 from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from tf2_ros import TransformException
@@ -46,11 +47,13 @@ class MetricsCollectorNode(LifecycleNode):
         self.declare_parameter('world', 'unknown')
         self.declare_parameter('publish_rate_hz', 2.0)
         self.declare_parameter('battery_drain_per_meter', 0.05)
+        self.declare_parameter('nav2_ready_timeout_sec', 30.0)
 
         self._status_sub = None
         self._feedback_sub = None
         self._metrics_timer = None
         self._pose_timer = None
+        self._nav_client = None
         self._subs = []
 
         self._current_pose: Optional[tuple] = None
@@ -96,6 +99,8 @@ class MetricsCollectorNode(LifecycleNode):
     def on_configure(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info('Configuring metrics_collector')
 
+        self._nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+
         best_effort_qos = QoSProfile(
             depth=10,
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -124,6 +129,8 @@ class MetricsCollectorNode(LifecycleNode):
             PoseStamped, '/goal_pose', self._goal_pose_callback, 10
         ))
 
+        if self._pose_timer:
+            self.destroy_timer(self._pose_timer)
         self._pose_timer = self.create_timer(0.1, self._update_pose_from_tf)
 
         self._pub_status = self.create_publisher(
@@ -135,23 +142,65 @@ class MetricsCollectorNode(LifecycleNode):
 
     def on_activate(self, state: LifecycleState) -> TransitionCallbackReturn:
         self.get_logger().info('Activating metrics_collector')
+
+        timeout = self.get_parameter('nav2_ready_timeout_sec').value
+        self.get_logger().info(
+            f'Waiting for Nav2 navigate_to_pose action server (timeout={timeout:.0f}s)...'
+        )
+        if self._nav_client and not self._nav_client.wait_for_server(timeout_sec=timeout):
+            self.get_logger().warn(
+                'Nav2 action server not available within timeout — activating anyway '
+                '(metrics will collect once Nav2 comes up)'
+            )
+        else:
+            self.get_logger().info('Nav2 action server ready.')
+
         rate = self.get_parameter('publish_rate_hz').value
+        if self._metrics_timer:
+            self.destroy_timer(self._metrics_timer)
         self._metrics_timer = self.create_timer(1.0 / rate, self._publish_metrics)
         return super().on_activate(state)
 
     def on_deactivate(self, state: LifecycleState) -> TransitionCallbackReturn:
         if self._metrics_timer:
             self._metrics_timer.cancel()
+            self.destroy_timer(self._metrics_timer)
+            self._metrics_timer = None
         return super().on_deactivate(state)
 
     def on_cleanup(self, state: LifecycleState) -> TransitionCallbackReturn:
+        if self._metrics_timer:
+            self._metrics_timer.cancel()
+            self.destroy_timer(self._metrics_timer)
+            self._metrics_timer = None
+        if self._pose_timer:
+            self._pose_timer.cancel()
+            self.destroy_timer(self._pose_timer)
+            self._pose_timer = None
+
         for sub in self._subs:
             self.destroy_subscription(sub)
         self._subs.clear()
         if self._status_sub:
             self.destroy_subscription(self._status_sub)
+            self._status_sub = None
         if self._feedback_sub:
             self.destroy_subscription(self._feedback_sub)
+            self._feedback_sub = None
+
+        for pub_attr in (
+            '_pub_exec_time', '_pub_accuracy', '_pub_efficiency',
+            '_pub_battery', '_pub_recovery', '_pub_status', '_pub_alerts'
+        ):
+            pub = getattr(self, pub_attr)
+            if pub is not None:
+                self.destroy_publisher(pub)
+                setattr(self, pub_attr, None)
+
+        if self._nav_client is not None:
+            self._nav_client.destroy()
+            self._nav_client = None
+
         return TransitionCallbackReturn.SUCCESS
 
     # ── Callbacks ─────────────────────────────────────────────────────────
@@ -209,8 +258,8 @@ class MetricsCollectorNode(LifecycleNode):
                     self._handle_goal_end(tracked.status)
                 elif tracked.status == _CANCELING:
                     # Preempted goal is mid-cancellation; wait for STATUS_CANCELED before
-                    # finalising metrics so the manual goal isn't missed by an early return.
-                    return
+                    # finalising metrics, but still continue checking for a new active goal.
+                    pass
             else:
                 # Goal disappeared from the list before a terminal status was observed.
                 self._handle_goal_end(GoalStatus.STATUS_ABORTED)
