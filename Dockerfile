@@ -75,6 +75,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     x11vnc \
     novnc \
     websockify \
+    openbox \
     && pip3 install --no-cache-dir flask flask-cors pandas numpy \
     && rm -rf /var/lib/apt/lists/*
 
