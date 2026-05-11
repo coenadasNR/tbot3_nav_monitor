@@ -67,7 +67,7 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-docker compose $COMPOSE_FILES build
+DOCKER_BUILDKIT=1 docker compose $COMPOSE_FILES build
 
 if [ "$MODE" = "amcl" ]; then
   echo "[run_compose] Demo mode  — world: $WORLD | Dashboard: http://localhost:${DASHBOARD_PORT}"

@@ -35,11 +35,21 @@ if ($World -notin @("obstacles", "house", "narrow")) {
     exit 1
 }
 
-# ── Check VcXsrv ───────────────────────────────────────────────────────────
-if (-not (Get-Process -Name "vcxsrv" -ErrorAction SilentlyContinue)) {
-    Write-Warning "VcXsrv does not appear to be running."
-    Write-Warning "Download from: https://sourceforge.net/projects/vcxsrv/"
-    Write-Warning "Launch XLaunch and make sure 'Disable access control' is ticked."
+# ── Check / Launch VcXsrv ──────────────────────────────────────────────────
+$vcxsrvExe = "C:\Program Files\VcXsrv\vcxsrv.exe"
+$vcxsrvRunning = Get-Process -Name "vcxsrv" -ErrorAction SilentlyContinue
+if (-not $vcxsrvRunning) {
+    if (Test-Path $vcxsrvExe) {
+        Write-Host "[run_windows] Starting VcXsrv..."
+        Start-Process -FilePath $vcxsrvExe -ArgumentList ":0", "-multiwindow", "-clipboard", "-noprimary", "-wgl", "-ac"
+        Start-Sleep -Seconds 2
+    } else {
+        Write-Warning "VcXsrv not found at: $vcxsrvExe"
+        Write-Warning "Download from: https://sourceforge.net/projects/vcxsrv/"
+        Write-Warning "Install it, then re-run this script - it will start automatically."
+    }
+} else {
+    Write-Host "[run_windows] VcXsrv already running."
 }
 
 # ── Environment ────────────────────────────────────────────────────────────
@@ -51,7 +61,8 @@ $env:DISPLAY        = "host.docker.internal:0.0"
 
 # ── Build ──────────────────────────────────────────────────────────────────
 Write-Host "[run_windows] Building image..."
-docker compose build
+$env:DOCKER_BUILDKIT = "1"
+docker compose build --no-cache=false
 
 # ── Launch ─────────────────────────────────────────────────────────────────
 try {

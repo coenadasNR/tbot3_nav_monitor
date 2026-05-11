@@ -34,8 +34,6 @@ services:
   # ── Monitor nodes ──────────────────────────────────────────────────────────
   monitor:
     image: tbot3_nav_monitor:latest
-    build:
-      context: .
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
