@@ -68,7 +68,7 @@ No ROS2 installation is required on the host. Everything runs inside the contain
 
 ## 3. Quick start
 
-### Linux / macOS
+### Linux
 
 ```bash
 # AMCL demo (uses pre-built map, runs full monitoring stack)
@@ -77,7 +77,19 @@ WORLD=house     MODE=amcl ./scripts/run_compose.sh
 WORLD=narrow    MODE=amcl ./scripts/run_compose.sh
 ```
 
-The script auto-detects the OS and applies the correct compose overlay.
+The script auto-detects Linux and mounts the host X11 socket.
+
+### macOS
+
+```bash
+WORLD=obstacles MODE=amcl ./scripts/run_compose.sh
+```
+
+The script detects macOS and uses `docker-compose.mac.yml`, which starts an in-container virtual framebuffer (Xvfb), VNC server (x11vnc), and noVNC web proxy.
+No XQuartz or any X server is needed on the host.
+
+Once running, open **http://localhost:6080** in any browser to see Gazebo and RViz2.
+Use the Openbox window manager (right-click the desktop for a menu) to move and resize windows.
 
 ### Windows (PowerShell)
 
@@ -90,7 +102,8 @@ $env:WORLD = "obstacles"; $env:MODE = "amcl"; .\scripts\run_windows.ps1
 Once Nav2 reports ready (~30 s after launch):
 
 ```
-http://localhost:8080
+http://localhost:8080        ← metrics dashboard (all platforms)
+http://localhost:6080        ← Gazebo/RViz2 desktop (macOS only)
 ```
 
 The patrol begins automatically and goals start appearing on the dashboard.
@@ -107,8 +120,14 @@ WORLD=narrow ./scripts/run_compose.sh
 docker compose exec sim ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 # 3. When the map looks complete, save it
+# Linux:
 docker compose -f docker-compose.yml -f docker-compose.linux.yml exec sim \
   bash /ros2_ws/scripts/save_map.sh narrow
+# macOS:
+docker compose -f docker-compose.yml -f docker-compose.mac.yml exec sim \
+  bash /ros2_ws/scripts/save_map.sh narrow
+# Windows:
+docker exec tbot3_nav_monitor-sim-1 bash /ros2_ws/scripts/save_map.sh narrow
 
 # 4. Ctrl-C, then relaunch with MODE=amcl to use the new map
 ```
@@ -201,9 +220,11 @@ tbot3_nav_monitor/
 ├── Dockerfile                  # multi-stage: builder (colcon) + lean runtime
 ├── docker-compose.yml          # cross-platform: bridge net + ipc:host for DDS
 ├── docker-compose.linux.yml    # Linux X11 socket overlay
+├── docker-compose.mac.yml      # macOS VNC overlay (Xvfb + x11vnc + noVNC)
 ├── scripts/
 │   ├── run_compose.sh          # Linux/macOS launcher (OS-detect)
-│   ├── run_windows.ps1         # Windows PowerShell launcher
+│   ├── run_windows.ps1         # Windows PowerShell launcher (auto-starts VcXsrv)
+│   ├── start_vnc.sh            # macOS: starts Xvfb + x11vnc + noVNC inside container
 │   ├── save_map.sh             # SLAM map serialisation
 │   └── ros_entrypoint.sh       # container entrypoint
 ├── src/tbot3_nav_monitor/
