@@ -37,7 +37,8 @@ class DataLoggerNode(Node):
         self._writer = csv.DictWriter(self._csv_file, fieldnames=[
             'timestamp', 'world', 'execution_time_s', 'nav_accuracy_m',
             'path_efficiency', 'recovery_count', 'battery_pct',
-            'total_distance_m', 'navigation_active', 'goals_completed'
+            'total_distance_m', 'navigation_active', 'goals_completed',
+            'goals_failed', 'goals_canceled', 'goal_status'
         ], extrasaction='ignore')
         self._writer.writeheader()
         self._row_count = 0

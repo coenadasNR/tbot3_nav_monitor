@@ -51,12 +51,13 @@ _HTML = """
   #world-accent { flex:1; height:3px; border-radius:2px; background:#4a90d9; margin-left:1rem; }
 
   /* Goal tracking strip */
-  #goal-strip { display:grid; grid-template-columns:2fr 1fr 1fr; gap:1rem; padding:1.5rem 2rem 0; }
+  #goal-strip { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:1rem; padding:1.5rem 2rem 0; }
   .goal-card { background:#1a1a2e; border-radius:8px; padding:1.2rem 1.5rem; display:flex; align-items:center; gap:1rem; border-left:4px solid #555; }
   .goal-card.status-idle      { border-left-color:#555; }
   .goal-card.status-active    { border-left-color:#4a90d9; }
   .goal-card.status-succeeded { border-left-color:#2ecc71; }
   .goal-card.status-failed    { border-left-color:#e74c3c; }
+  .goal-card.status-canceled  { border-left-color:#f0a500; }
   .gs-icon { font-size:2rem; width:2.5rem; text-align:center; }
   .gs-text h3 { font-size:0.7rem; color:#888; text-transform:uppercase; letter-spacing:1px; }
   .gs-text .gsv { font-size:1.5rem; font-weight:700; color:#fff; }
@@ -126,7 +127,12 @@ _HTML = """
   <div class="goal-stat">
     <h3>Goals Failed</h3>
     <div class="gsv" id="goals-failed" style="color:#e74c3c">0</div>
-    <div class="gsu">aborted / preempted</div>
+    <div class="gsu">aborted</div>
+  </div>
+  <div class="goal-stat">
+    <h3>Goals Canceled</h3>
+    <div class="gsv" id="goals-canceled" style="color:#f0a500">0</div>
+    <div class="gsu">preempted</div>
   </div>
 </div>
 
@@ -168,6 +174,7 @@ const GOAL_CFG = {
   ACTIVE:    { cls: 'status-active',    icon: '&#x25B6;', pulse: true  },
   SUCCEEDED: { cls: 'status-succeeded', icon: '&#x2713;', pulse: false },
   FAILED:    { cls: 'status-failed',    icon: '&#x2717;', pulse: false },
+  CANCELED:  { cls: 'status-canceled',  icon: '&#x23F9;', pulse: false },
 };
 
 // Charts
@@ -211,6 +218,7 @@ async function refresh() {
     document.getElementById('gs-val').textContent = status;
     document.getElementById('goals-completed').textContent = d.goals_completed ?? 0;
     document.getElementById('goals-failed').textContent    = d.goals_failed    ?? 0;
+    document.getElementById('goals-canceled').textContent  = d.goals_canceled  ?? 0;
 
     // Metric cards
     const cards = [
@@ -257,6 +265,7 @@ async function loadSummary() {
       return `<tr>
         <td><span style="margin-right:0.5rem">${wCfg.icon}</span><strong>${w}</strong></td>
         <td>${d.runs}</td>
+        <td>${d.failed}</td>
         <td>${d.avg_accuracy_m.toFixed(3)} m</td>
         <td>${(d.avg_efficiency * 100).toFixed(0)}%</td>
         <td>${d.avg_recovery_per_goal.toFixed(2)}</td>
@@ -266,7 +275,7 @@ async function loadSummary() {
     document.getElementById('summary-table').innerHTML = `
       <table>
         <thead><tr>
-          <th>World</th><th>Goals Completed</th><th>Avg Accuracy</th>
+          <th>World</th><th>Goals Completed</th><th>Goals Failed</th><th>Avg Accuracy</th>
           <th>Avg Efficiency</th><th>Avg Recoveries/Goal</th><th>Avg Exec Time</th>
         </tr></thead>
         <tbody>${rows}</tbody>
@@ -417,13 +426,21 @@ class WebDashboardNode(LifecycleNode):
                 return jsonify({'error': 'no data', 'worlds': {}})
 
             completed_rows = []
+            failed_counts = {}
             for f in files:
                 try:
                     fdf = pd.read_csv(f)
                     if 'goals_completed' not in fdf.columns:
                         continue
+                    
+                    world_name = str(fdf['world'].iloc[-1]) if not fdf.empty and 'world' in fdf.columns else 'unknown'
+                    
                     goal_events = fdf[fdf['goals_completed'].diff().fillna(0) > 0]
                     completed_rows.append(goal_events)
+                    
+                    if 'goals_failed' in fdf.columns:
+                        fails = int(fdf['goals_failed'].max()) if not fdf['goals_failed'].empty else 0
+                        failed_counts[world_name] = failed_counts.get(world_name, 0) + fails
                 except Exception:
                     continue
 
@@ -438,6 +455,7 @@ class WebDashboardNode(LifecycleNode):
             for world, wdf in df.groupby('world'):
                 summary['worlds'][str(world)] = {
                     'runs':                  int(len(wdf)),
+                    'failed':                failed_counts.get(str(world), 0),
                     'avg_accuracy_m':        round(float(wdf['nav_accuracy_m'].mean()),   3),
                     'avg_efficiency':        round(float(wdf['path_efficiency'].mean()),   3),
                     'avg_recovery_per_goal': round(float(wdf['recovery_count'].mean()),    2),
