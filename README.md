@@ -39,7 +39,7 @@ The package observes a Nav2 navigation stack from the side, computes performance
                                 └───────────────────────┘
 ```
 
-Five Python nodes, four of them lifecycle nodes:
+Five Python nodes, three of them lifecycle nodes:
 
 | Node | Type | Purpose |
 |---|---|---|
@@ -235,7 +235,7 @@ tbot3_nav_monitor/
 │   ├── launch/                 # 5 launch files (per-world sim + monitor + full_stack)
 │   ├── config/                 # nav2_params*.yaml + nav_monitor.rviz
 │   ├── tbot3_nav_monitor/      # 5 nodes
-│   └── test/                   # 43 unit tests + conftest.py
+│   └── test/                   # 68 unit tests + conftest.py
 ├── worlds/                     # narrow_passages.world (custom)
 ├── maps/                       # saved AMCL maps for all three worlds
 ├── data/csv/                   # runtime-generated metric logs
