@@ -74,14 +74,17 @@ class MetricsCollectorNode(LifecycleNode):
         self._battery_pct: float = 100.0
         self._goals_completed: int = 0
         self._goals_failed: int = 0
-        self._goal_status: str = 'IDLE'   # IDLE | ACTIVE | SUCCEEDED | FAILED
+        self._goals_canceled: int = 0
+        self._goal_status: str = 'IDLE'   # IDLE | ACTIVE | SUCCEEDED | FAILED | CANCELED
 
         # Latest calculated metrics (for publishing)
         self._last_exec_time: float = 0.0
         self._last_accuracy_m: float = 0.0
         self._last_efficiency: float = 0.0   # 0.0 = no data yet, not "perfect"
-        self._has_navigated: bool = False    # gate: don't publish efficiency until first goal
+        self._has_navigated: bool = False    # any goal has started executing
+        self._has_efficiency: bool = False   # first real efficiency value has been computed
         self._battery_alert_sent: bool = False
+        self._is_canceling: bool = False
 
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -251,22 +254,28 @@ class MetricsCollectorNode(LifecycleNode):
 
             if tracked:
                 if tracked.status in _TERMINAL:
-                    # Use the terminal status directly while the entry is still in the list;
-                    # it is pruned quickly so the fallback below would otherwise report ABORTED.
-                    # No early return — a preempting manual goal may already be EXECUTING
-                    # in this same message and should be detected immediately below.
-                    self._handle_goal_end(tracked.status)
+                    # Nav2 hard-aborts preempted goals (status 6) instead of using
+                    # CANCELING→CANCELED. Detect this: if a *different* goal is
+                    # already EXECUTING, the abort was a preemption, not a failure.
+                    effective_status = tracked.status
+                    if (tracked.status == GoalStatus.STATUS_ABORTED
+                            and active_goal
+                            and str(active_goal.goal_info.goal_id.uuid) != self._active_goal_id):
+                        effective_status = GoalStatus.STATUS_CANCELED
+                    self._handle_goal_end(effective_status)
                 elif tracked.status == _CANCELING:
-                    # Preempted goal is mid-cancellation; wait for STATUS_CANCELED before
-                    # finalising metrics, but still continue checking for a new active goal.
-                    pass
+                    self._is_canceling = True
             else:
                 # Goal disappeared from the list before a terminal status was observed.
-                self._handle_goal_end(GoalStatus.STATUS_ABORTED)
+                if self._is_canceling:
+                    self._handle_goal_end(GoalStatus.STATUS_CANCELED)
+                else:
+                    self._handle_goal_end(GoalStatus.STATUS_ABORTED)
 
-        # Detect new ACTIVE goal — runs immediately after _handle_goal_end when a manual
-        # goal preempts a patrol goal in the same status message.
+        # Detect new ACTIVE goal — only if we are not currently tracking one.
         if active_goal and not self._navigation_active:
+            gid = str(active_goal.goal_info.goal_id.uuid)
+
             # /goal_pose and /nav_monitor/target_pose update _target_pose; if neither has
             # arrived yet we defer rather than snapshot a stale patrol waypoint.
             if self._target_pose is None:
@@ -275,7 +284,6 @@ class MetricsCollectorNode(LifecycleNode):
                 )
                 return
             
-            gid = str(active_goal.goal_info.goal_id.uuid)
             self.get_logger().info(f'Goal active: {gid[:8]}')
             self._navigation_active = True
             self._has_navigated = True
@@ -294,29 +302,44 @@ class MetricsCollectorNode(LifecycleNode):
         self._last_exec_time = time.monotonic() - self._goal_start_time
 
         if status == GoalStatus.STATUS_SUCCEEDED:
-            # Full metrics — robot reached the target
+            # Full metrics — robot reached the target.
             self._last_accuracy_m = compute_accuracy(self._current_pose, self._active_target_pose)
             self._last_efficiency = compute_efficiency(
                 self._active_target_pose, self._start_pose, self._path_length_m
             )
+            self._has_efficiency = True
             self._goals_completed += 1
             self._goal_status = 'SUCCEEDED'
+
         elif status == GoalStatus.STATUS_ABORTED:
             # Genuine navigation failure — Nav2 gave up on its own.
+            # Record accuracy only if the robot got reasonably close: a large abort
+            # distance indicates a global planning failure (no path found), not a
+            # goal-tolerance issue, and should not influence Rule 2 in adaptive_behavior.
             distance_to_goal = compute_accuracy(self._current_pose, self._active_target_pose)
-            # Only record accuracy if the robot got reasonably close (e.g., within 1.0m).
-            # If it aborted 5 meters away, that's a global planning failure, not a tolerance issue.
             if distance_to_goal <= 1.0:
                 self._last_accuracy_m = distance_to_goal
-            self._goals_failed += 1
-            self._goal_status = 'FAILED'
-        else:
-            # STATUS_CANCELED — externally preempted (manual goal, next patrol waypoint).
-            # Robot was mid-journey; don't update accuracy or efficiency.
+                self.get_logger().info(
+                    f'Abort accuracy recorded: {distance_to_goal:.3f}m'
+                )
+            else:
+                self.get_logger().warn(
+                    f'Abort too far from goal ({distance_to_goal:.2f}m > 1.0m) '
+                    '— likely planning failure, accuracy not recorded'
+                )
             self._goals_failed += 1
             self._goal_status = 'FAILED'
 
+        else:
+            # STATUS_CANCELED — externally preempted (manual RViz2 goal or patrol
+            # advancing to next waypoint). The robot was mid-journey so its current
+            # distance to the interrupted goal is meaningless noise; don't update
+            # accuracy or efficiency. Tracked separately from genuine failures.
+            self._goals_canceled += 1
+            self._goal_status = 'CANCELED'
+
         self._navigation_active = False
+        self._is_canceling = False
         self._active_goal_id = None
         self._active_target_pose = None
         # _target_pose is intentionally NOT cleared here
@@ -329,6 +352,10 @@ class MetricsCollectorNode(LifecycleNode):
             self._last_efficiency = compute_efficiency(
                 self._active_target_pose, self._start_pose, self._path_length_m
             )
+            # Mark that a real efficiency value exists so _publish_metrics
+            # can start broadcasting it rather than the default 0.0.
+            if not self._has_efficiency and self._last_efficiency > 0.0:
+                self._has_efficiency = True
 
     # ── Publishing ────────────────────────────────────────────────────────
 
@@ -340,7 +367,7 @@ class MetricsCollectorNode(LifecycleNode):
 
         self._pub_exec_time.publish(Float64(data=float(self._last_exec_time)))
         self._pub_accuracy.publish(Float64(data=float(self._last_accuracy_m)))
-        if self._has_navigated:
+        if self._has_efficiency:
             self._pub_efficiency.publish(Float64(data=float(self._last_efficiency)))
         self._pub_battery.publish(Float64(data=float(self._battery_pct)))
         self._pub_recovery.publish(Int32(data=int(self._recovery_count)))
@@ -358,6 +385,7 @@ class MetricsCollectorNode(LifecycleNode):
             'goal_status':      self._goal_status,
             'goals_completed':  self._goals_completed,
             'goals_failed':     self._goals_failed,
+            'goals_canceled':   self._goals_canceled,
         }
         self._pub_status.publish(String(data=json.dumps(payload)))
 
