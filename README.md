@@ -191,9 +191,10 @@ Three JSON endpoints: `/api/metrics`, `/api/alerts`, `/api/summary`.
 
 ## 8. Manual goal interruption
 
-Send a `/goal_pose` from RViz2 ("2D Goal Pose" tool) at any time. The patrol pauses, the robot navigates to the manual goal, monitoring tracks it the same as any patrol goal, and the patrol resumes from the next waypoint. Implementation handles three race conditions:
+Send a `/goal_pose` from RViz2 ("2D Goal Pose" tool) at any time. The patrol pauses, the robot navigates to the manual goal, monitoring tracks it the same as any patrol goal, and the patrol resumes from the next waypoint. Implementation handles four race conditions:
 - patrol cancellation passes through `STATUS_CANCELING` before reaching `STATUS_CANCELED`
 - the manual goal may be `EXECUTING` in the same `GoalStatusArray` message that reports the patrol cancellation
+- Nav2 may emit `STATUS_ABORTED` for the old goal in the same tick that the next patrol goal is accepted; `waypoint_patrol` publishes the outgoing goal's UUID to `/nav_monitor/preempted_goal_id` before calling `send_goal_async`, so `metrics_collector` can classify it as preempted rather than a genuine failure
 - 120 s timeout fallback if a manual goal never produces a terminal status
 
 ---
@@ -205,11 +206,12 @@ cd src/tbot3_nav_monitor
 python3 -m pytest test/ -v
 ```
 
-43 unit tests (no live ROS2 required — `conftest.py` provides class stubs):
+68 unit tests (no live ROS2 required — `conftest.py` provides class stubs):
 
-- **`test_adaptive_behavior.py`** — all three rules in isolation and combined, restoration paths, threshold oscillation, partial/empty windows, ping-pong regression
-- **`test_metrics_collector.py`** — `compute_accuracy` / `compute_efficiency` purity, None-pose handling, zero-distance edge case
-- **`test_data_logger.py`** — CSV writing, malformed JSON handling, all four alert thresholds at boundary conditions
+- **`test_adaptive_behavior.py`** (22) — all three rules in isolation and combined, restoration paths, threshold oscillation, partial/empty windows, ping-pong regression
+- **`test_metrics_collector.py`** (29) — `compute_accuracy` / `compute_efficiency` purity, None-pose handling, zero-distance edge case, UUID-based preemption classification, ABORTED vs CANCELED branching
+- **`test_data_logger.py`** (11) — CSV writing, malformed JSON handling, all four alert thresholds at boundary conditions, alert deduplication (fires once, clears on recovery, re-fires on re-trigger)
+- **`test_web_dashboard.py`** (6) — Flask endpoint stubs, alert log thread-safety, `/api/metrics` and `/api/alerts` response shape
 
 ---
 
