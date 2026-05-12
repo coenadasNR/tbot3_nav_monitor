@@ -51,6 +51,14 @@ class DataLoggerNode(Node):
         self.create_subscription(String, '/nav_monitor/live_data',         self._metrics_cb,     qos_profile=best_effort)
         self.create_subscription(String, '/nav_monitor/param_adjustments', self._adjustments_cb, 10)
 
+        # Per-alert-type deduplication flags — set when an alert fires, cleared when
+        # the condition drops below threshold.  Prevents continuous re-firing at 2 Hz
+        # for a condition that stays true across many live_data messages.
+        self._alert_battery_sent  = False
+        self._alert_accuracy_sent = False
+        self._alert_exec_sent     = False
+        self._alert_recovery_sent = False
+
         self.get_logger().info(f'Logging to {self._csv_path}')
 
     def _metrics_cb(self, msg: String) -> None:
@@ -79,17 +87,40 @@ class DataLoggerNode(Node):
 
         alerts = []
 
-        if data.get('battery_pct', 100) <= alert_battery:
-            alerts.append(f'LOW BATTERY: {data["battery_pct"]:.1f}%')
+        # Each condition uses a "sent" flag so the alert fires once when the condition
+        # first becomes true, and fires again only after it has cleared and re-triggered.
 
-        if data.get('nav_accuracy_m', 0) > alert_accuracy:
-            alerts.append(f'POOR ACCURACY: {data["nav_accuracy_m"]:.3f}m (threshold {alert_accuracy}m)')
+        battery = data.get('battery_pct', 100)
+        if battery <= alert_battery:
+            if not self._alert_battery_sent:
+                alerts.append(f'LOW BATTERY: {battery:.1f}%')
+                self._alert_battery_sent = True
+        else:
+            self._alert_battery_sent = False
 
-        if data.get('execution_time_s', 0) > alert_exec:
-            alerts.append(f'SLOW NAVIGATION: {data["execution_time_s"]:.1f}s (threshold {alert_exec}s)')
+        accuracy = data.get('nav_accuracy_m', 0)
+        if accuracy > alert_accuracy:
+            if not self._alert_accuracy_sent:
+                alerts.append(f'POOR ACCURACY: {accuracy:.3f}m (threshold {alert_accuracy}m)')
+                self._alert_accuracy_sent = True
+        else:
+            self._alert_accuracy_sent = False
 
-        if data.get('recovery_count', 0) >= alert_recovery:
-            alerts.append(f'HIGH RECOVERY COUNT: {data["recovery_count"]} recoveries')
+        exec_time = data.get('execution_time_s', 0)
+        if exec_time > alert_exec:
+            if not self._alert_exec_sent:
+                alerts.append(f'SLOW NAVIGATION: {exec_time:.1f}s (threshold {alert_exec}s)')
+                self._alert_exec_sent = True
+        else:
+            self._alert_exec_sent = False
+
+        recovery = data.get('recovery_count', 0)
+        if recovery >= alert_recovery:
+            if not self._alert_recovery_sent:
+                alerts.append(f'HIGH RECOVERY COUNT: {recovery} recoveries')
+                self._alert_recovery_sent = True
+        else:
+            self._alert_recovery_sent = False
 
         for alert in alerts:
             self.get_logger().warn(f'[ALERT] {alert}')
