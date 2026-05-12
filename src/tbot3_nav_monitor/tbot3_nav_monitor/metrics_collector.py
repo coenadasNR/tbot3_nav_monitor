@@ -85,6 +85,7 @@ class MetricsCollectorNode(LifecycleNode):
         self._has_efficiency: bool = False   # first real efficiency value has been computed
         self._battery_alert_sent: bool = False
         self._is_canceling: bool = False
+        self._preempted_goal_ids: set = set()   # UUIDs patrol explicitly superseded
 
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -130,6 +131,9 @@ class MetricsCollectorNode(LifecycleNode):
         ))
         self._subs.append(self.create_subscription(
             PoseStamped, '/goal_pose', self._goal_pose_callback, 10
+        ))
+        self._subs.append(self.create_subscription(
+            String, '/nav_monitor/preempted_goal_id', self._preempted_goal_callback, 10
         ))
 
         if self._pose_timer:
@@ -212,6 +216,12 @@ class MetricsCollectorNode(LifecycleNode):
         self._target_pose = (msg.pose.position.x, msg.pose.position.y)
         self.get_logger().info(f'Target pose captured: {self._target_pose}')
 
+    def _preempted_goal_callback(self, msg: String) -> None:
+        """waypoint_patrol publishes the UUID it is about to supersede before sending the
+        next goal. Storing it lets _status_callback classify the resulting ABORTED as a
+        preemption rather than a genuine planning failure."""
+        self._preempted_goal_ids.add(msg.data)
+
     def _update_pose_from_tf(self) -> None:
         try:
             trans = self._tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
@@ -255,13 +265,20 @@ class MetricsCollectorNode(LifecycleNode):
             if tracked:
                 if tracked.status in _TERMINAL:
                     # Nav2 hard-aborts preempted goals (status 6) instead of using
-                    # CANCELING→CANCELED. Detect this: if a *different* goal is
-                    # already EXECUTING, the abort was a preemption, not a failure.
+                    # CANCELING→CANCELED. Use the authoritative preempted-UUID set published
+                    # by waypoint_patrol to distinguish a real planning failure from a
+                    # deliberate preemption. Fall back to the "new goal executing" heuristic
+                    # only when no explicit signal was received (e.g. manual RViz2 preemption).
                     effective_status = tracked.status
-                    if (tracked.status == GoalStatus.STATUS_ABORTED
-                            and active_goal
-                            and str(active_goal.goal_info.goal_id.uuid) != self._active_goal_id):
-                        effective_status = GoalStatus.STATUS_CANCELED
+                    if tracked.status == GoalStatus.STATUS_ABORTED:
+                        gid_hex = ''.join(f'{b:02x}' for b in tracked.goal_info.goal_id.uuid)
+                        if gid_hex in self._preempted_goal_ids:
+                            effective_status = GoalStatus.STATUS_CANCELED
+                            self._preempted_goal_ids.discard(gid_hex)
+                        elif (active_goal
+                                and str(active_goal.goal_info.goal_id.uuid) != self._active_goal_id):
+                            # Fallback heuristic for manual RViz2 preemptions (no UUID published)
+                            effective_status = GoalStatus.STATUS_CANCELED
                     self._handle_goal_end(effective_status)
                 elif tracked.status == _CANCELING:
                     self._is_canceling = True

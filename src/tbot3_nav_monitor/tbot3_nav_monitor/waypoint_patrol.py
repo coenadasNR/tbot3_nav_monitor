@@ -19,6 +19,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import String
 
 # (x, y, yaw_degrees) — positions chosen to be in clear navigable space per world
 _WAYPOINTS: dict = {
@@ -41,8 +42,8 @@ _WAYPOINTS: dict = {
         ( 1.5, -4.0,   0),   # C1 east end
         (-1.5, -2.2,   0),   # C3 west end  (robot traverses narrow C2 to reach here)
         ( 1.5, -2.2, 180),   # C3 east end
-        (-1.5, -0.4,   0),   # C5 west end  (robot traverses narrow C4 to reach here)
-        ( 1.5, -0.4, 180),   # C5 east end
+        (-1.5, -0.8,   0),   # C5 west end  (robot traverses narrow C4 to reach here)
+        ( 1.5, -0.8, 180),   # C5 east end
         (-1.5, -4.0,   0),   # C1 west end  (return through all corridors)
     ],
 }
@@ -80,7 +81,9 @@ class WaypointPatrolNode(Node):
         self._MANUAL_TIMEOUT_SEC: float = 120.0  # resume patrol if manual goal never clears
 
         self._goal_pub = self.create_publisher(PoseStamped, '/nav_monitor/target_pose', 10)
+        self._preempted_pub = self.create_publisher(String, '/nav_monitor/preempted_goal_id', 10)
         self._client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self._active_goal_handle = None
 
         # Detect manual goals from RViz2 "2D Goal Pose"
         self.create_subscription(PoseStamped, '/goal_pose', self._on_manual_goal, 10)
@@ -127,6 +130,13 @@ class WaypointPatrolNode(Node):
         goal.pose = _make_pose(x, y, yaw)
         goal.pose.header.stamp = self.get_clock().now().to_msg()
 
+        # Publish the UUID of the goal being superseded *before* sending the new one so
+        # metrics_collector can classify the incoming ABORTED as a preemption, not a failure.
+        if self._active_goal_handle is not None:
+            uid = ''.join(f'{b:02x}' for b in self._active_goal_handle.goal_id.uuid)
+            self._preempted_pub.publish(String(data=uid))
+            self._active_goal_handle = None
+
         self._goal_pub.publish(goal.pose)
         self._goal_active = True
         self._client.send_goal_async(goal).add_done_callback(self._on_goal_accepted)
@@ -137,6 +147,7 @@ class WaypointPatrolNode(Node):
             self.get_logger().warn('Goal rejected — skipping to next waypoint')
             self._advance()
             return
+        self._active_goal_handle = handle
         handle.get_result_async().add_done_callback(self._on_result)
 
     def _on_result(self, future) -> None:
