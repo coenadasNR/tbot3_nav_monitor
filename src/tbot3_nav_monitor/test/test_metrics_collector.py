@@ -25,16 +25,34 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import tbot3_nav_monitor.metrics_collector as mc
 from tbot3_nav_monitor.metrics_collector import compute_accuracy, compute_efficiency
 
-# Pin GoalStatus constants to real integers so if/elif comparisons in
-# _handle_goal_end work correctly under the MagicMock stub environment.
-# Values match the ROS2 action_msgs/GoalStatus definition.
-mc.GoalStatus.STATUS_UNKNOWN   = 0
-mc.GoalStatus.STATUS_ACCEPTED  = 1
-mc.GoalStatus.STATUS_EXECUTING = 2
-mc.GoalStatus.STATUS_CANCELING = 3
-mc.GoalStatus.STATUS_SUCCEEDED = 4
-mc.GoalStatus.STATUS_CANCELED  = 5
-mc.GoalStatus.STATUS_ABORTED   = 6
+@pytest.fixture(autouse=True)
+def _pin_goal_status_constants():
+    """Keep GoalStatus constants deterministic per-test and restore afterwards."""
+    pinned = {
+        'STATUS_UNKNOWN': 0,
+        'STATUS_ACCEPTED': 1,
+        'STATUS_EXECUTING': 2,
+        'STATUS_CANCELING': 3,
+        'STATUS_SUCCEEDED': 4,
+        'STATUS_CANCELED': 5,
+        'STATUS_ABORTED': 6,
+    }
+    _missing = object()
+    originals = {name: getattr(mc.GoalStatus, name, _missing) for name in pinned}
+
+    for name, value in pinned.items():
+        setattr(mc.GoalStatus, name, value)
+
+    yield
+
+    for name, value in originals.items():
+        if value is _missing:
+            try:
+                delattr(mc.GoalStatus, name)
+            except AttributeError:
+                pass
+        else:
+            setattr(mc.GoalStatus, name, value)
 
 
 # ── compute_accuracy ───────────────────────────────────────────────────────
@@ -346,4 +364,4 @@ def test_handle_goal_end_always_clears_is_canceling():
 def test_canceled_sets_goal_status_to_canceled():
     node = _make_goal_end_node()
     node._handle_goal_end(mc.GoalStatus.STATUS_CANCELED)
-    assert node._goal_status == 'CANCELED'
+    assert node._goal_status == 'CANCELED'

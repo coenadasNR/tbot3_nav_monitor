@@ -82,42 +82,52 @@ def test_start_flask_starts_server_when_not_running(monkeypatch):
 
     fake_server = MagicMock()
 
-    # Stub Flask ecosystem into sys.modules so the try/except import succeeds
-    fake_flask = MagicMock()
-    fake_flask.Flask = lambda name: MagicMock()
-    fake_flask_cors = MagicMock()
-    fake_flask_cors.CORS = lambda app: None
-    fake_werkzeug = MagicMock()
-    fake_werkzeug_serving = MagicMock()
-    fake_werkzeug_serving.make_server = lambda host, port, app: fake_server
+    with monkeypatch.context() as mp:
+        # Stub Flask ecosystem into sys.modules so the try/except import succeeds
+        fake_flask = MagicMock()
+        fake_flask.Flask = lambda name: MagicMock()
+        fake_flask_cors = MagicMock()
+        fake_flask_cors.CORS = lambda app: None
+        fake_werkzeug = MagicMock()
+        fake_werkzeug_serving = MagicMock()
+        fake_werkzeug_serving.make_server = lambda host, port, app: fake_server
 
-    monkeypatch.setitem(sys.modules, 'flask', fake_flask)
-    monkeypatch.setitem(sys.modules, 'flask_cors', fake_flask_cors)
-    monkeypatch.setitem(sys.modules, 'werkzeug', fake_werkzeug)
-    monkeypatch.setitem(sys.modules, 'werkzeug.serving', fake_werkzeug_serving)
+        mp.setitem(sys.modules, 'flask', fake_flask)
+        mp.setitem(sys.modules, 'flask_cors', fake_flask_cors)
+        mp.setitem(sys.modules, 'werkzeug', fake_werkzeug)
+        mp.setitem(sys.modules, 'werkzeug.serving', fake_werkzeug_serving)
 
+        wd_local = importlib.reload(wd)
+
+        class _FakeThread:
+            def __init__(self, target=None, daemon=None):
+                self.target = target
+                self.daemon = daemon
+                self.started = False
+
+            def start(self):
+                self.started = True
+
+        mp.setattr(wd_local.threading, 'Thread', _FakeThread)
+
+        node = wd_local.WebDashboardNode.__new__(wd_local.WebDashboardNode)
+        node._subs = []
+        node._http_server = None
+        node._http_thread = None
+        node.destroy_subscription = MagicMock()
+        node.get_logger = MagicMock(return_value=MagicMock())
+        node.get_parameter = MagicMock(return_value=type('P', (), {'value': 8080})())
+        node._latest = {}
+        node._alert_log = []
+        node._summary_cache = None
+        node._summary_cache_time = 0.0
+
+        node._start_flask()
+
+        assert node._http_server is fake_server
+        assert node._http_thread is not None
+        assert node._http_thread.started is True
+        assert node._http_thread.target == fake_server.serve_forever
+
+    # Restore module state for tests that run later in this file/session.
     importlib.reload(wd)
-
-    class _FakeThread:
-        def __init__(self, target=None, daemon=None):
-            self.target = target
-            self.daemon = daemon
-            self.started = False
-        def start(self):
-            self.started = True
-
-    monkeypatch.setattr(wd.threading, 'Thread', _FakeThread)
-
-    node = _make_node()
-    node.get_parameter = MagicMock(return_value=type('P', (), {'value': 8080})())
-    node._latest = {}
-    node._alert_log = []
-    node._summary_cache = None
-    node._summary_cache_time = 0.0
-
-    node._start_flask()
-
-    assert node._http_server is fake_server
-    assert node._http_thread is not None
-    assert node._http_thread.started is True
-    assert node._http_thread.target == fake_server.serve_forever
