@@ -78,14 +78,25 @@ def test_start_flask_is_noop_when_already_running():
 
 
 def test_start_flask_starts_server_when_not_running(monkeypatch):
-    node = _make_node()
-    node.get_parameter = MagicMock(return_value=type('P', (), {'value': 8080})())
-    node._latest = {}
-    node._alert_log = []
-    node._summary_cache = None
-    node._summary_cache_time = 0.0
+    import importlib
 
     fake_server = MagicMock()
+
+    # Stub Flask ecosystem into sys.modules so the try/except import succeeds
+    fake_flask = MagicMock()
+    fake_flask.Flask = lambda name: MagicMock()
+    fake_flask_cors = MagicMock()
+    fake_flask_cors.CORS = lambda app: None
+    fake_werkzeug = MagicMock()
+    fake_werkzeug_serving = MagicMock()
+    fake_werkzeug_serving.make_server = lambda host, port, app: fake_server
+
+    monkeypatch.setitem(sys.modules, 'flask', fake_flask)
+    monkeypatch.setitem(sys.modules, 'flask_cors', fake_flask_cors)
+    monkeypatch.setitem(sys.modules, 'werkzeug', fake_werkzeug)
+    monkeypatch.setitem(sys.modules, 'werkzeug.serving', fake_werkzeug_serving)
+
+    importlib.reload(wd)
 
     class _FakeThread:
         def __init__(self, target=None, daemon=None):
@@ -95,8 +106,14 @@ def test_start_flask_starts_server_when_not_running(monkeypatch):
         def start(self):
             self.started = True
 
-    monkeypatch.setattr(wd, 'make_server', lambda host, port, app: fake_server)
     monkeypatch.setattr(wd.threading, 'Thread', _FakeThread)
+
+    node = _make_node()
+    node.get_parameter = MagicMock(return_value=type('P', (), {'value': 8080})())
+    node._latest = {}
+    node._alert_log = []
+    node._summary_cache = None
+    node._summary_cache_time = 0.0
 
     node._start_flask()
 

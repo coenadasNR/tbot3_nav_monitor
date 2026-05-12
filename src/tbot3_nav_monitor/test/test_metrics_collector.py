@@ -1,5 +1,6 @@
 """Unit tests for metrics_collector pure-math helpers (no ROS2 runtime needed)."""
 import math
+import time
 import sys
 import os
 from unittest.mock import MagicMock
@@ -23,6 +24,17 @@ for _m in _MOCKS:
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import tbot3_nav_monitor.metrics_collector as mc
 from tbot3_nav_monitor.metrics_collector import compute_accuracy, compute_efficiency
+
+# Pin GoalStatus constants to real integers so if/elif comparisons in
+# _handle_goal_end work correctly under the MagicMock stub environment.
+# Values match the ROS2 action_msgs/GoalStatus definition.
+mc.GoalStatus.STATUS_UNKNOWN   = 0
+mc.GoalStatus.STATUS_ACCEPTED  = 1
+mc.GoalStatus.STATUS_EXECUTING = 2
+mc.GoalStatus.STATUS_CANCELING = 3
+mc.GoalStatus.STATUS_SUCCEEDED = 4
+mc.GoalStatus.STATUS_CANCELED  = 5
+mc.GoalStatus.STATUS_ABORTED   = 6
 
 
 # ── compute_accuracy ───────────────────────────────────────────────────────
@@ -98,6 +110,10 @@ def _make_lifecycle_node():
     node._subs = []
     node._status_sub = None
     node._feedback_sub = None
+    node._has_navigated = False
+    node._has_efficiency = False
+    node._goals_canceled = 0
+    node._nav_client = None
     node._pub_exec_time = None
     node._pub_accuracy = None
     node._pub_efficiency = None
@@ -171,3 +187,163 @@ def test_on_cleanup_releases_timers_subscriptions_and_publishers():
     assert node._pub_recovery is None
     assert node._pub_status is None
     assert node._pub_alerts is None
+
+
+# ── _handle_goal_end ───────────────────────────────────────────────────────
+
+def _make_goal_end_node(current_pose=(1.0, 0.0), target_pose=(1.0, 0.0), path_length=1.0):
+    """Minimal node stub with the state _handle_goal_end reads and writes."""
+    node = mc.MetricsCollectorNode.__new__(mc.MetricsCollectorNode)
+    node.get_logger = MagicMock(return_value=MagicMock())
+    node._current_pose        = current_pose
+    node._active_target_pose  = target_pose
+    node._start_pose          = (0.0, 0.0)
+    node._path_length_m       = path_length
+    node._goal_start_time     = time.monotonic() - 5.0   # 5 s ago
+    node._last_exec_time      = 0.0
+    node._last_accuracy_m     = 0.0
+    node._last_efficiency     = 0.0
+    node._has_efficiency      = False
+    node._goals_completed     = 0
+    node._goals_failed        = 0
+    node._goals_canceled      = 0
+    node._is_canceling        = False
+    node._goal_status         = 'ACTIVE'
+    node._navigation_active   = True
+    node._active_goal_id      = 'test-goal-id'
+    return node
+
+
+def test_succeeded_records_accuracy_and_efficiency():
+    node = _make_goal_end_node(current_pose=(1.1, 0.0), target_pose=(1.0, 0.0), path_length=2.0)
+    node._handle_goal_end(mc.GoalStatus.STATUS_SUCCEEDED)
+
+    assert node._last_accuracy_m == pytest.approx(0.1, abs=1e-6)
+    assert 0.0 < node._last_efficiency <= 1.0
+    assert node._has_efficiency is True
+    assert node._goals_completed == 1
+    assert node._goals_failed    == 0
+    assert node._goals_canceled  == 0
+    assert node._goal_status     == 'SUCCEEDED'
+
+
+def test_succeeded_clears_navigation_state():
+    node = _make_goal_end_node()
+    node._handle_goal_end(mc.GoalStatus.STATUS_SUCCEEDED)
+
+    assert node._navigation_active  is False
+    assert node._active_goal_id     is None
+    assert node._active_target_pose is None
+
+
+def test_succeeded_exec_time_is_positive():
+    node = _make_goal_end_node()
+    node._handle_goal_end(mc.GoalStatus.STATUS_SUCCEEDED)
+    assert node._last_exec_time > 0.0
+
+
+def test_aborted_within_1m_records_accuracy():
+    # distance = 0.5 m — within gate
+    node = _make_goal_end_node(current_pose=(1.5, 0.0), target_pose=(1.0, 0.0))
+    node._handle_goal_end(mc.GoalStatus.STATUS_ABORTED)
+
+    assert node._last_accuracy_m == pytest.approx(0.5, abs=1e-6)
+    assert node._goals_failed    == 1
+    assert node._goals_completed == 0
+    assert node._goals_canceled  == 0
+    assert node._goal_status     == 'FAILED'
+
+
+def test_aborted_at_exactly_1m_records_accuracy():
+    """Boundary: 1.0 m is inclusive (≤ 1.0)."""
+    node = _make_goal_end_node(current_pose=(2.0, 0.0), target_pose=(1.0, 0.0))
+    node._handle_goal_end(mc.GoalStatus.STATUS_ABORTED)
+
+    assert node._last_accuracy_m == pytest.approx(1.0, abs=1e-6)
+    assert node._goals_failed == 1
+
+
+def test_aborted_beyond_1m_does_not_update_accuracy():
+    # distance = 2.0 m — beyond gate; previous accuracy value must be preserved
+    node = _make_goal_end_node(current_pose=(3.0, 0.0), target_pose=(1.0, 0.0))
+    node._last_accuracy_m = 0.05   # last good reading from a previous success
+    node._handle_goal_end(mc.GoalStatus.STATUS_ABORTED)
+
+    assert node._last_accuracy_m == pytest.approx(0.05, abs=1e-6)   # unchanged
+    assert node._goals_failed == 1
+
+
+def test_aborted_does_not_set_has_efficiency():
+    node = _make_goal_end_node(current_pose=(1.5, 0.0), target_pose=(1.0, 0.0))
+    node._handle_goal_end(mc.GoalStatus.STATUS_ABORTED)
+
+    assert node._has_efficiency is False
+
+
+def test_aborted_clears_navigation_state():
+    node = _make_goal_end_node(current_pose=(1.5, 0.0), target_pose=(1.0, 0.0))
+    node._handle_goal_end(mc.GoalStatus.STATUS_ABORTED)
+
+    assert node._navigation_active  is False
+    assert node._active_goal_id     is None
+    assert node._active_target_pose is None
+
+
+def test_canceled_does_not_update_accuracy_or_efficiency():
+    node = _make_goal_end_node(current_pose=(0.5, 0.0), target_pose=(2.0, 0.0))
+    node._last_accuracy_m = 0.08
+    node._last_efficiency = 0.90
+    node._handle_goal_end(mc.GoalStatus.STATUS_CANCELED)
+
+    assert node._last_accuracy_m == pytest.approx(0.08, abs=1e-6)   # unchanged
+    assert node._last_efficiency  == pytest.approx(0.90, abs=1e-6)  # unchanged
+    assert node._has_efficiency   is False
+
+
+def test_canceled_increments_goals_canceled_not_goals_failed():
+    node = _make_goal_end_node()
+    node._goals_failed = 2   # pre-existing failures
+    node._handle_goal_end(mc.GoalStatus.STATUS_CANCELED)
+
+    assert node._goals_canceled == 1
+    assert node._goals_failed   == 2   # unchanged
+    assert node._goals_completed == 0
+
+
+def test_canceled_clears_navigation_state():
+    node = _make_goal_end_node()
+    node._handle_goal_end(mc.GoalStatus.STATUS_CANCELED)
+
+    assert node._navigation_active  is False
+    assert node._active_goal_id     is None
+    assert node._active_target_pose is None
+
+
+def test_all_statuses_always_update_exec_time():
+    for status in (
+        mc.GoalStatus.STATUS_SUCCEEDED,
+        mc.GoalStatus.STATUS_ABORTED,
+        mc.GoalStatus.STATUS_CANCELED,
+    ):
+        node = _make_goal_end_node()
+        node._last_exec_time = 0.0
+        node._handle_goal_end(status)
+        assert node._last_exec_time > 0.0, f'exec_time not updated for status {status}'
+
+
+def test_handle_goal_end_always_clears_is_canceling():
+    for status in (
+        mc.GoalStatus.STATUS_SUCCEEDED,
+        mc.GoalStatus.STATUS_ABORTED,
+        mc.GoalStatus.STATUS_CANCELED,
+    ):
+        node = _make_goal_end_node()
+        node._is_canceling = True   # simulate mid-cancel state
+        node._handle_goal_end(status)
+        assert node._is_canceling is False, f'_is_canceling not cleared for status {status}'
+
+
+def test_canceled_sets_goal_status_to_canceled():
+    node = _make_goal_end_node()
+    node._handle_goal_end(mc.GoalStatus.STATUS_CANCELED)
+    assert node._goal_status == 'CANCELED'
