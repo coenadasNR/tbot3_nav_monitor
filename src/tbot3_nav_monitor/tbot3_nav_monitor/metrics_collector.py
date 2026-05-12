@@ -294,16 +294,25 @@ class MetricsCollectorNode(LifecycleNode):
         self._last_exec_time = time.monotonic() - self._goal_start_time
 
         if status == GoalStatus.STATUS_SUCCEEDED:
-            # Only update quality metrics on success; cancelled/aborted goals never reached
-            # the target so their accuracy/efficiency readings are meaningless and would
-            # pollute adaptive_behavior's rolling windows.
+            # Full metrics — robot reached the target
             self._last_accuracy_m = compute_accuracy(self._current_pose, self._active_target_pose)
             self._last_efficiency = compute_efficiency(
                 self._active_target_pose, self._start_pose, self._path_length_m
             )
             self._goals_completed += 1
             self._goal_status = 'SUCCEEDED'
+        elif status == GoalStatus.STATUS_ABORTED:
+            # Genuine navigation failure — Nav2 gave up on its own.
+            distance_to_goal = compute_accuracy(self._current_pose, self._active_target_pose)
+            # Only record accuracy if the robot got reasonably close (e.g., within 1.0m).
+            # If it aborted 5 meters away, that's a global planning failure, not a tolerance issue.
+            if distance_to_goal <= 1.0:
+                self._last_accuracy_m = distance_to_goal
+            self._goals_failed += 1
+            self._goal_status = 'FAILED'
         else:
+            # STATUS_CANCELED — externally preempted (manual goal, next patrol waypoint).
+            # Robot was mid-journey; don't update accuracy or efficiency.
             self._goals_failed += 1
             self._goal_status = 'FAILED'
 
