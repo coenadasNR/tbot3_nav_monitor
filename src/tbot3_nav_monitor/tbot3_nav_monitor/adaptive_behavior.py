@@ -44,7 +44,7 @@ class AdaptiveBehaviorNode(LifecycleNode):
         super().__init__('adaptive_behavior')
 
         self.declare_parameter('recovery_threshold', 3)
-        self.declare_parameter('accuracy_threshold_m', 0.20)
+        self.declare_parameter('accuracy_threshold_m', 0.40)
         self.declare_parameter('efficiency_threshold', 0.60)
         self.declare_parameter('check_period_sec', 5.0)
         self.declare_parameter('nav2_ready_timeout_sec', 30.0)

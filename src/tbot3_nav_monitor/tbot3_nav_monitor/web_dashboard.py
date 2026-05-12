@@ -7,6 +7,7 @@ import glob
 import json
 import os
 import threading
+from collections import deque
 
 import rclpy
 from rclpy.lifecycle import LifecycleNode, LifecycleState, TransitionCallbackReturn
@@ -316,9 +317,11 @@ class WebDashboardNode(LifecycleNode):
             'goal_status': 'IDLE',
             'goals_completed': 0,
             'goals_failed': 0,
+            'goals_canceled': 0,
             'world': 'unknown',
         }
-        self._alert_log: list = []
+        self._alert_log: deque = deque(maxlen=100)
+        self._alert_lock = threading.Lock()
         self._last_raw: str = ''
         self._summary_cache = None
         self._summary_cache_time: float = 0.0
@@ -378,12 +381,12 @@ class WebDashboardNode(LifecycleNode):
         try:
             data = json.loads(msg.data)
             # Store raw ts + message — browser formats timestamp in local timezone
-            self._alert_log.append({
-                'ts':  data.get('timestamp', 0),
-                'msg': data.get('message', ''),
-            })
-            if len(self._alert_log) > 100:
-                self._alert_log.pop(0)
+            with self._alert_lock:
+                self._alert_log.append({
+                    'ts':  data.get('timestamp', 0),
+                    'msg': data.get('message', ''),
+                })
+            # maxlen=100 on the deque handles overflow automatically — no pop() needed
         except json.JSONDecodeError:
             pass
 
@@ -407,7 +410,9 @@ class WebDashboardNode(LifecycleNode):
 
         @app.route('/api/alerts')
         def api_alerts():
-            return jsonify(node_ref._alert_log)
+            with node_ref._alert_lock:
+                snapshot = list(node_ref._alert_log)
+            return jsonify(snapshot)
 
         @app.route('/api/summary')
         def api_summary():
