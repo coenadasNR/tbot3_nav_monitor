@@ -155,6 +155,10 @@ class WaypointPatrolNode(Node):
         x, y, _ = self._waypoints[self._idx]
         status = result.status if result else '?'
 
+        # Clear the handle so _tick does not publish its UUID as "preempted"
+        # on the next send — this goal has already reached a terminal state.
+        self._active_goal_handle = None
+
         if result and result.status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info(f'Reached ({x:.1f}, {y:.1f})')
             self._advance()

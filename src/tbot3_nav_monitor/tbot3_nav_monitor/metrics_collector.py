@@ -208,6 +208,8 @@ class MetricsCollectorNode(LifecycleNode):
             self._nav_client.destroy()
             self._nav_client = None
 
+        self._preempted_goal_ids.clear()
+
         return TransitionCallbackReturn.SUCCESS
 
     # ── Callbacks ─────────────────────────────────────────────────────────

@@ -139,6 +139,7 @@ def _make_lifecycle_node():
     node._pub_recovery = None
     node._pub_status = None
     node._pub_alerts = None
+    node._preempted_goal_ids = set()
     return node
 
 
