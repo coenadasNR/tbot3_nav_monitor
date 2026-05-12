@@ -76,7 +76,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     novnc \
     websockify \
     openbox \
-    && pip3 install --no-cache-dir flask flask-cors pandas numpy \
+    && pip3 install --no-cache-dir flask flask-cors pandas numpy pytest \
     && rm -rf /var/lib/apt/lists/*
 
 # Gazebo models fetched in builder — no git required at runtime
