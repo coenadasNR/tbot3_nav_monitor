@@ -2,8 +2,11 @@
 # Requires: Docker Desktop, VcXsrv (https://sourceforge.net/projects/vcxsrv/)
 #
 # Usage:
-#   $env:WORLD = "obstacles"; .\scripts\run_windows.ps1             # SLAM mapping
-#   $env:WORLD = "obstacles"; $env:MODE = "amcl"; .\scripts\run_windows.ps1  # AMCL demo
+#   $env:WORLD = "obstacles"; .\scripts\run_windows.ps1                                           # SLAM mapping
+#   $env:WORLD = "obstacles"; $env:MODE = "amcl"; .\scripts\run_windows.ps1                    # AMCL adaptive (default)
+#   $env:WORLD = "house"; $env:MODE = "amcl"; $env:NAV_CONFIG = "baseline"; .\scripts\run_windows.ps1               # baseline
+#   $env:WORLD = "house"; $env:MODE = "amcl"; $env:NAV_CONFIG = "params_a_adaptive"; .\scripts\run_windows.ps1       # custom config + adaptive
+#   $env:WORLD = "house"; $env:MODE = "amcl"; $env:NAV_CONFIG = "params_a_baseline"; $env:NAV_ADAPTIVE = "false"; .\scripts\run_windows.ps1  # custom config + no adaptive
 #
 # Mapping workflow:
 #   1. Set WORLD and run this script (SLAM mode, default)
@@ -17,12 +20,16 @@ param(
     [string]$World         = $env:WORLD,
     [string]$Mode          = "slam",
     [string]$DashboardPort = "8080",
-    [string]$RosDomainId   = "0"
+    [string]$RosDomainId   = "0",
+    [string]$NavConfig     = $env:NAV_CONFIG,
+    [string]$NavAdaptive   = $env:NAV_ADAPTIVE
 )
 
 if ($env:MODE)          { $Mode          = $env:MODE }
 if ($env:DASHBOARD_PORT){ $DashboardPort = $env:DASHBOARD_PORT }
 if ($env:ROS_DOMAIN_ID) { $RosDomainId   = $env:ROS_DOMAIN_ID }
+if ($env:NAV_CONFIG)    { $NavConfig     = $env:NAV_CONFIG }
+if ($env:NAV_ADAPTIVE)  { $NavAdaptive   = $env:NAV_ADAPTIVE }
 
 # ── Validate ───────────────────────────────────────────────────────────────
 if (-not $World) {
@@ -58,6 +65,8 @@ $env:MODE           = $Mode
 $env:DASHBOARD_PORT = $DashboardPort
 $env:ROS_DOMAIN_ID  = $RosDomainId
 $env:DISPLAY        = "host.docker.internal:0.0"
+if ($NavConfig)   { $env:NAV_CONFIG   = $NavConfig   }
+if ($NavAdaptive) { $env:NAV_ADAPTIVE = $NavAdaptive }
 
 # ── Build ──────────────────────────────────────────────────────────────────
 Write-Host "[run_windows] Building image..."
@@ -67,7 +76,9 @@ docker compose build --no-cache=false
 # ── Launch ─────────────────────────────────────────────────────────────────
 try {
     if ($Mode -eq "amcl") {
-        Write-Host "[run_windows] Demo mode - world: $World | Dashboard: http://localhost:$DashboardPort"
+        $cfgLabel = if ($NavConfig) { $NavConfig } else { "adaptive" }
+        $adaptLabel = if ($NavAdaptive -eq "false") { "adaptive OFF" } else { "adaptive ON" }
+        Write-Host "[run_windows] Demo mode - world: $World | config: $cfgLabel ($adaptLabel) | Dashboard: http://localhost:$DashboardPort"
         docker compose up
     } else {
         Write-Host "[run_windows] Mapping mode - world: $World"

@@ -80,6 +80,9 @@ WORLD=narrow    MODE=amcl ./scripts/run_compose.sh
 WORLD=obstacles MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
 WORLD=house     MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
 WORLD=narrow    MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
+
+# Custom config label + adaptive OFF (NAV_CONFIG can be any name)
+WORLD=house MODE=amcl NAV_CONFIG=params_a_baseline NAV_ADAPTIVE=false ./scripts/run_compose.sh
 ```
 
 The script auto-detects Linux and mounts the host X11 socket.
@@ -106,8 +109,14 @@ Use the Openbox window manager (right-click the desktop for a menu) to move and 
 # Adaptive (default)
 $env:WORLD = "obstacles"; $env:MODE = "amcl"; .\scripts\run_windows.ps1
 
-# Baseline
+# Baseline (adaptive node disabled)
 $env:WORLD = "obstacles"; $env:MODE = "amcl"; $env:NAV_CONFIG = "baseline"; .\scripts\run_windows.ps1
+
+# Custom config label + adaptive ON
+$env:WORLD = "house"; $env:MODE = "amcl"; $env:NAV_CONFIG = "params_a_adaptive"; .\scripts\run_windows.ps1
+
+# Custom config label + adaptive OFF
+$env:WORLD = "house"; $env:MODE = "amcl"; $env:NAV_CONFIG = "params_a_baseline"; $env:NAV_ADAPTIVE = "false"; .\scripts\run_windows.ps1
 ```
 
 ### Open the dashboard

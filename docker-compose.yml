@@ -56,7 +56,7 @@ services:
       ros2 launch tbot3_nav_monitor monitor.launch.py
         world:=${WORLD:?WORLD must be set}
         config:=${NAV_CONFIG:-default}
-        adaptive:=$([ \"${NAV_CONFIG:-default}\" = \"baseline\" ] && echo false || echo true)
+        adaptive:=${NAV_ADAPTIVE:-$([ \"${NAV_CONFIG:-default}\" = \"baseline\" ] && echo false || echo true)}
         dashboard_port:=${DASHBOARD_PORT:-8080}"
 
 networks:

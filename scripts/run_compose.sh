@@ -3,8 +3,11 @@
 # Windows users: use scripts/run_windows.ps1 instead.
 #
 # Usage:
-#   WORLD=obstacles ./scripts/run_compose.sh              ← SLAM mapping
-#   WORLD=obstacles MODE=amcl ./scripts/run_compose.sh    ← AMCL demo
+#   WORLD=obstacles ./scripts/run_compose.sh                                                   ← SLAM mapping
+#   WORLD=obstacles MODE=amcl ./scripts/run_compose.sh                                   ← AMCL adaptive (default)
+#   WORLD=house MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh                  ← baseline
+#   WORLD=house MODE=amcl NAV_CONFIG=params_a_adaptive ./scripts/run_compose.sh         ← custom config + adaptive
+#   WORLD=house MODE=amcl NAV_CONFIG=params_a_baseline NAV_ADAPTIVE=false ./scripts/run_compose.sh  ← custom config, no adaptive
 #
 # Mapping workflow:
 #   1. WORLD=<w> ./scripts/run_compose.sh
@@ -32,6 +35,8 @@ export WORLD
 export MODE="${MODE:-slam}"
 export DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+export NAV_CONFIG="${NAV_CONFIG:-default}"
+export NAV_ADAPTIVE="${NAV_ADAPTIVE:-}"
 
 # ── OS detection ───────────────────────────────────────────────────────────
 OS=$(uname -s)
@@ -63,7 +68,8 @@ trap cleanup INT TERM
 DOCKER_BUILDKIT=1 docker compose $COMPOSE_FILES build
 
 if [ "$MODE" = "amcl" ]; then
-  echo "[run_compose] Demo mode  — world: $WORLD | Dashboard: http://localhost:${DASHBOARD_PORT}"
+  ADAPTIVE_LABEL=$([ "${NAV_ADAPTIVE}" = "false" ] && echo "adaptive OFF" || echo "adaptive ON")
+  echo "[run_compose] Demo mode  — world: $WORLD | config: ${NAV_CONFIG} (${ADAPTIVE_LABEL}) | Dashboard: http://localhost:${DASHBOARD_PORT}"
   docker compose $COMPOSE_FILES up
 else
   echo "[run_compose] Mapping mode — world: $WORLD"
