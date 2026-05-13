@@ -71,18 +71,9 @@ No ROS2 installation is required on the host. Everything runs inside the contain
 ### Linux
 
 ```bash
-# Adaptive mode (default) — dynamic Nav2 parameter tuning enabled
 WORLD=obstacles MODE=amcl ./scripts/run_compose.sh
 WORLD=house     MODE=amcl ./scripts/run_compose.sh
 WORLD=narrow    MODE=amcl ./scripts/run_compose.sh
-
-# Baseline mode — fixed parameters, adaptive_behavior node disabled
-WORLD=obstacles MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
-WORLD=house     MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
-WORLD=narrow    MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
-
-# Custom config label + adaptive OFF (NAV_CONFIG can be any name)
-WORLD=house MODE=amcl NAV_CONFIG=params_a_baseline NAV_ADAPTIVE=false ./scripts/run_compose.sh
 ```
 
 The script auto-detects Linux and mounts the host X11 socket.
@@ -90,11 +81,7 @@ The script auto-detects Linux and mounts the host X11 socket.
 ### macOS
 
 ```bash
-# Adaptive (default)
 WORLD=obstacles MODE=amcl ./scripts/run_compose.sh
-
-# Baseline
-WORLD=obstacles MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
 ```
 
 The script detects macOS and uses `docker-compose.mac.yml`, which starts an in-container virtual framebuffer (Xvfb), VNC server (x11vnc), and noVNC web proxy.
@@ -105,20 +92,8 @@ Use the Openbox window manager (right-click the desktop for a menu) to move and 
 
 ### Windows (PowerShell)
 
-`NAV_CONFIG` and `NAV_ADAPTIVE` must be passed as script parameters (`-NavConfig`, `-NavAdaptive`), not as env vars — the script ignores inherited session env vars for these two flags to prevent stale values carrying over between runs.
-
 ```powershell
-# Adaptive (default)
 $env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1
-
-# Baseline — adaptive node disabled (special keyword "baseline")
-$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig baseline
-
-# Custom config label + adaptive ON (any label other than "baseline")
-$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig params_a_adaptive
-
-# Custom config label + adaptive OFF (must pass -NavAdaptive false explicitly)
-$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig params_a_baseline -NavAdaptive false
 ```
 
 ### Open the dashboard
@@ -183,6 +158,35 @@ Three Gazebo worlds exercise progressively harder navigation challenges, each ru
 | `obstacles` | Open arena with a 3×3 cylinder grid | Dynamic replanning around moving obstacles | `turtlebot3_world.world` |
 | `house`     | Multi-room domestic environment | Door frames, corridors, long cross-room legs | `turtlebot3_house.world` |
 | `narrow`    | Custom corridors with sub-1 m passages + 2 dynamic obstacles | Tight clearance, frequent recovery, replanning | `worlds/narrow_passages.world` |
+
+### Run configuration
+
+Two optional variables control how a run is labelled and whether the adaptive node runs:
+
+| Variable | What it does | Default |
+|---|---|---|
+| `NAV_CONFIG` | Free-form label written into the CSV filename and dashboard row — use it to name the run | `adaptive` |
+| `NAV_ADAPTIVE` | Set to `false` to disable the `adaptive_behavior` node. Omit to keep it enabled. Setting `NAV_CONFIG=baseline` also disables it automatically | enabled |
+
+**Linux / macOS**
+```bash
+# Baseline — adaptive node disabled
+WORLD=house MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
+
+# Custom label + adaptive OFF
+WORLD=house MODE=amcl NAV_CONFIG=my_config NAV_ADAPTIVE=false ./scripts/run_compose.sh
+```
+
+**Windows (PowerShell)** — pass as script parameters, not env vars:
+```powershell
+# Baseline
+$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig baseline
+
+# Custom label + adaptive OFF
+$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig my_config -NavAdaptive false
+```
+
+Each run produces a separate CSV: `nav_metrics_{world}_{NAV_CONFIG}_{timestamp}.csv`. Running the same world with different labels lets `analyse.py` compare them side by side.
 
 ### Results
 
