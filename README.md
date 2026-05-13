@@ -343,11 +343,11 @@ tbot3_nav_monitor/
 ## 12. Docker Hub
 
 ```bash
-docker pull <DOCKERHUB_USER>/tbot3_nav_monitor:latest
+docker pull coenanr/tbot3_nav_monitor:latest
 WORLD=obstacles MODE=amcl docker compose up
 ```
 
-Image tag: `<DOCKERHUB_USER>/tbot3_nav_monitor:latest`.
+Image tag: `coenanr/tbot3_nav_monitor:latest`.
 
 ---
 
