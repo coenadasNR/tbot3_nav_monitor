@@ -35,8 +35,12 @@ export WORLD
 export MODE="${MODE:-slam}"
 export DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
-export NAV_CONFIG="${NAV_CONFIG:-default}"
 export NAV_ADAPTIVE="${NAV_ADAPTIVE:-true}"
+if [ -z "${NAV_CONFIG}" ] && [ "${NAV_ADAPTIVE}" = "false" ]; then
+  export NAV_CONFIG="baseline"
+else
+  export NAV_CONFIG="${NAV_CONFIG:-default}"
+fi
 
 # ── OS detection ───────────────────────────────────────────────────────────
 OS=$(uname -s)

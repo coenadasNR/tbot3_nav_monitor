@@ -64,8 +64,8 @@ $env:DASHBOARD_PORT = $DashboardPort
 $env:ROS_DOMAIN_ID  = $RosDomainId
 $env:DISPLAY        = "host.docker.internal:0.0"
 # Always overwrite (or clear) so stale session values don't leak into docker compose
-$env:NAV_CONFIG   = if ($NavConfig)   { $NavConfig }   else { "default" }
 $env:NAV_ADAPTIVE = if ($NavAdaptive) { $NavAdaptive } else { "true" }
+$env:NAV_CONFIG   = if ($NavConfig)   { $NavConfig }   elseif ($env:NAV_ADAPTIVE -eq "false") { "baseline" } else { "default" }
 
 # ── Build ──────────────────────────────────────────────────────────────────
 Write-Host "[run_windows] Building image..."
@@ -75,7 +75,7 @@ docker compose build --no-cache=false
 # ── Launch ─────────────────────────────────────────────────────────────────
 try {
     if ($Mode -eq "amcl") {
-        $cfgLabel = if ($NavConfig) { $NavConfig } else { "adaptive" }
+        $cfgLabel = if ($NavConfig) { $NavConfig } elseif ($env:NAV_ADAPTIVE -eq "false") { "baseline" } else { "adaptive" }
         $adaptLabel = if ($NavAdaptive -eq "false") { "adaptive OFF" } else { "adaptive ON" }
         Write-Host "[run_windows] Demo mode - world: $World | config: $cfgLabel ($adaptLabel) | Dashboard: http://localhost:$DashboardPort"
         docker compose up
