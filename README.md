@@ -6,7 +6,7 @@ The package observes a Nav2 navigation stack from the side, computes performance
 
 > **Submission for the AI4I (Italian Institute of Artificial Intelligence) PhD application.**
 
-<video src="assets/demo.mp4" controls width="100%"></video>
+[![Demo video](https://img.shields.io/badge/Demo-Watch%20video-blue?style=for-the-badge&logo=github)](https://github.com/coenadasNR/tbot3_nav_monitor/raw/main/assets/demo.mp4)
 
 ---
 
