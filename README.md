@@ -142,7 +142,7 @@ Three independent rules, each with hysteresis to prevent oscillation. Rolling wi
 |---|---|---|---|
 | **1 — Slow down** | avg recovery ≥ 3 | `desired_linear_vel: 0.20 → 0.10`, `rotate_to_heading_angular_vel: 1.8 → 0.9` | avg recovery < 1.5 **and** efficiency healthy |
 | **2 — Relax tolerance** | avg accuracy > 0.40 m | `xy_goal_tolerance: 0.15 → 0.35` | avg accuracy < 0.20 m |
-| **3 — Conservative mode** | avg efficiency < 0.60 | `cost_scaling_factor: 3.0 → 8.0` (steeper inflation gradient → planner prefers corridor centres), velocity reduced as in Rule 1 | avg efficiency > 0.85 |
+| **3 — Conservative mode** | avg efficiency < 0.40 | `cost_scaling_factor: 3.0 → 5.0` (steeper inflation gradient → planner prefers corridor centres), velocity reduced as in Rule 1 | avg efficiency > 0.85 |
 
 Rule 1's restore is gated on Rule 3 — if efficiency is still poor, the velocity reduction is held even when recoveries normalise. This prevents the two rules from ping-ponging each tick.
 
@@ -152,25 +152,50 @@ Reconfiguration uses the standard ROS2 `SetParameters` service against `/control
 
 ## 6. Multi-environment testing
 
-Three Gazebo worlds exercise progressively harder navigation challenges:
+Three Gazebo worlds exercise progressively harder navigation challenges. Each world was run twice — once with adaptive behavior enabled and once with it disabled (baseline) — using an identical 10-waypoint outward-and-return patrol route. 12 goals were completed in every run.
 
-| World | Description | Source |
-|---|---|---|
-| `obstacles` | Open arena with scattered cylinders | `turtlebot3_world.world` |
-| `house`     | Multi-room domestic environment | `turtlebot3_house.world` |
-| `narrow`    | Custom corridors with sub-1 m passages | `worlds/narrow_passages.world` |
+| World | Description | Challenge | Source |
+|---|---|---|---|
+| `obstacles` | Open arena with a 3×3 cylinder grid | Dynamic replanning around moving obstacles | `turtlebot3_world.world` |
+| `house`     | Multi-room domestic environment | Door frames, corridors, long cross-room legs | `turtlebot3_house.world` |
+| `narrow`    | Custom corridors with sub-1 m passages + 2 dynamic obstacles | Tight clearance, frequent recovery, replanning | `worlds/narrow_passages.world` |
+
+### Patrol routes
+
+Each world uses a 10-waypoint outward-and-return route designed so no single leg requires crossing more than two obstacles or baffles.
+
+| World | Route map |
+|---|---|
+| Obstacles | ![Obstacles patrol route](data/plots/obstacles_world_map.png) |
+| House | ![House patrol route](data/plots/house_world_map.png) |
+| Narrow | ![Narrow patrol route](data/plots/narrow_world_map.png) |
 
 ### Results
 
-Live results are computed automatically by the dashboard's `/api/summary` endpoint, which detects goal-completion rows (`goals_completed` increments) across every CSV in `data/csv/` and aggregates per world. Indicative numbers from a sample run:
+| Metric | Obstacles — Adaptive | Obstacles — Baseline | House — Adaptive | House — Baseline | Narrow — Adaptive | Narrow — Baseline |
+|---|---|---|---|---|---|---|
+| Goals succeeded | 12 | 12 | 12 | 12 | 12 | 12 |
+| Goals failed | 0 | 0 | 0 | 0 | **3** | 0 |
+| Success rate | 100% | 100% | 100% | 100% | 80% | 100% |
+| Avg path efficiency | **0.91** | 0.76 | 0.69 | 0.69 | **0.66** | 0.61 |
+| Avg execution time | 9.84 s | 9.69 s | 31.28 s | **22.76 s** | 20.82 s | 19.32 s |
+| Avg recovery count | 0.00 | 0.00 | 0.00 | 0.00 | 4.56 | 3.33 |
+| Total distance (m) | 30.77 | 31.00 | 77.64 | 76.30 | 47.14 | 48.23 |
+| Battery remaining | 98.5% | 98.4% | 96.1% | 96.2% | 97.6% | 97.6% |
 
-| World | Goals completed | Avg accuracy | Avg efficiency | Avg recoveries / goal | Avg execution time |
-|---|---|---|---|---|---|
-| `obstacles` | 39 | 0.173 m | 89% | 0.26 | 14.7 s |
-| `house`     | 12 | 0.099 m | 64% | 0.08 | 46.5 s |
-| `narrow`    |  9 | 0.206 m | 74% | 3.56 | 38.9 s |
+### Analysis
 
-**Analysis.** `obstacles` is the easiest — short distances, open space, near-optimal paths. `house` has lower efficiency because corridors and door frames force longer routes than straight-line distance, but stable AMCL gives the best accuracy. `narrow` produces by far the most recoveries — every traverse of a sub-1 m corridor exercises the adaptive `cost_scaling` rule, which kicks in within 5 ticks of efficiency dropping. Without adaptation the narrow world fails to traverse Corridor 2.
+**Obstacles world — strongest adaptive gain.** With no recoveries on either side, the only differentiator is path quality. Adaptive raises path efficiency from 0.76 → 0.91 (+20%) at negligible time cost (+0.15 s). The raised `cost_scaling_factor` pushes the planner toward corridor centres between cylinders, producing cleaner arcs with less redundant steering. This is the ideal operating regime for adaptive behavior.
+
+**House world — adaptive is neutral on efficiency, slower overall.** Both configurations complete all 12 goals with zero recoveries and identical path efficiency (0.69). The house corridors are wide enough that the default Nav2 params already find near-optimal paths; the higher cost scaling simply forces the planner to take longer routes around inflated obstacle borders, adding ~37% to execution time (31.3 s vs 22.8 s) with no benefit. This shows the importance of the hysteresis restore threshold — if efficiency never drops below 0.40, Rule 3 never fires, and the overhead is zero.
+
+**Narrow world — trade-off between reliability and path quality.** This is the hardest world: sub-1 m passages and two dynamic obstacles frequently force recovery. Adaptive improves path efficiency (0.66 vs 0.61) but incurs 3 goal failures (80% vs 100% success rate). The failures occur because the conservative `cost_scaling` occasionally causes the global planner to find no feasible path through the tightest corridors when dynamic obstacles shift the costmap mid-plan. The retry logic (up to 2 retries with 3 s delay) mitigates but does not eliminate this. Baseline succeeds every goal but with more erratic paths.
+
+**Overall.** Adaptive behavior is most effective in structured, obstacle-rich environments where path planning choices are meaningful. In open worlds it improves path quality; in very tight worlds it must be tuned carefully to avoid over-constraining the planner.
+
+### Per-world analysis plots
+
+Plots are generated by `scripts/analyse.py --world <world> --out-dir data/plots/<world>` and include summary bars, efficiency over time, recovery over time, execution time distributions, battery drain, and goal outcomes. See `data/plots/` for all generated figures.
 
 ---
 
