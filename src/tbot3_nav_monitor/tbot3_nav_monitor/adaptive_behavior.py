@@ -33,7 +33,7 @@ _DEFAULT_COST_SCALING = 3.0    # matches nav2_params*.yaml cost_scaling_factor
 
 _REDUCED_MAX_VEL    = 0.10
 _RELAXED_GOAL_TOL   = 0.35
-_HIGH_COST_SCALING  = 8.0      # steeper cost gradient → planner prefers corridor centers
+_HIGH_COST_SCALING  = 5.0      # steeper cost gradient → planner prefers corridor centers
 _SLOW_ROT_VEL       = 0.9
 
 WINDOW = 5  # rolling window for metric averaging
@@ -45,7 +45,7 @@ class AdaptiveBehaviorNode(LifecycleNode):
 
         self.declare_parameter('recovery_threshold', 3)
         self.declare_parameter('accuracy_threshold_m', 0.40)
-        self.declare_parameter('efficiency_threshold', 0.60)
+        self.declare_parameter('efficiency_threshold', 0.40)
         self.declare_parameter('check_period_sec', 5.0)
         self.declare_parameter('nav2_ready_timeout_sec', 30.0)
 
@@ -194,7 +194,8 @@ class AdaptiveBehaviorNode(LifecycleNode):
         # Rule 3: low efficiency → more conservative path planning.
         # Steeper inflation cost gradient (higher cost_scaling_factor) makes the planner
         # prefer paths down corridor centers and away from obstacle edges, without
-        # shrinking navigable space. Also reduces velocity for conservative execution.
+        # shrinking navigable space. Also reduces velocity so the robot executes the
+        # conservative plan carefully rather than charging through at full speed.
         # Inflation radius itself is kept at the per-world default (set in nav2_params*.yaml).
         if avg_efficiency < eff_thresh:
             changed = False
@@ -218,7 +219,6 @@ class AdaptiveBehaviorNode(LifecycleNode):
                 self._current_cost_scaling = _DEFAULT_COST_SCALING
                 changes[_PARAM_COST_SCALING] = _DEFAULT_COST_SCALING
                 changed = True
-            # Restore velocity only if Rule 1 also doesn't need it reduced
             if avg_recovery < rec_thresh * 0.5 and self._current_max_vel < _DEFAULT_MAX_VEL:
                 self._current_max_vel = _DEFAULT_MAX_VEL
                 changes[_PARAM_MAX_VEL] = _DEFAULT_MAX_VEL
