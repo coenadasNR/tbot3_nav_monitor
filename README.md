@@ -105,18 +105,20 @@ Use the Openbox window manager (right-click the desktop for a menu) to move and 
 
 ### Windows (PowerShell)
 
+`NAV_CONFIG` and `NAV_ADAPTIVE` must be passed as script parameters (`-NavConfig`, `-NavAdaptive`), not as env vars — the script ignores inherited session env vars for these two flags to prevent stale values carrying over between runs.
+
 ```powershell
 # Adaptive (default)
-$env:WORLD = "obstacles"; $env:MODE = "amcl"; .\scripts\run_windows.ps1
+$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1
 
-# Baseline (adaptive node disabled)
-$env:WORLD = "obstacles"; $env:MODE = "amcl"; $env:NAV_CONFIG = "baseline"; .\scripts\run_windows.ps1
+# Baseline — adaptive node disabled (special keyword "baseline")
+$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig baseline
 
-# Custom config label + adaptive ON
-$env:WORLD = "house"; $env:MODE = "amcl"; $env:NAV_CONFIG = "params_a_adaptive"; .\scripts\run_windows.ps1
+# Custom config label + adaptive ON (any label other than "baseline")
+$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig params_a_adaptive
 
-# Custom config label + adaptive OFF
-$env:WORLD = "house"; $env:MODE = "amcl"; $env:NAV_CONFIG = "params_a_baseline"; $env:NAV_ADAPTIVE = "false"; .\scripts\run_windows.ps1
+# Custom config label + adaptive OFF (must pass -NavAdaptive false explicitly)
+$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig params_a_baseline -NavAdaptive false
 ```
 
 ### Open the dashboard

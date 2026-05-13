@@ -21,15 +21,13 @@ param(
     [string]$Mode          = "slam",
     [string]$DashboardPort = "8080",
     [string]$RosDomainId   = "0",
-    [string]$NavConfig     = $env:NAV_CONFIG,
-    [string]$NavAdaptive   = $env:NAV_ADAPTIVE
+    [string]$NavConfig     = "",
+    [string]$NavAdaptive   = ""
 )
 
 if ($env:MODE)          { $Mode          = $env:MODE }
 if ($env:DASHBOARD_PORT){ $DashboardPort = $env:DASHBOARD_PORT }
 if ($env:ROS_DOMAIN_ID) { $RosDomainId   = $env:ROS_DOMAIN_ID }
-if ($env:NAV_CONFIG)    { $NavConfig     = $env:NAV_CONFIG }
-if ($env:NAV_ADAPTIVE)  { $NavAdaptive   = $env:NAV_ADAPTIVE }
 
 # ── Validate ───────────────────────────────────────────────────────────────
 if (-not $World) {
@@ -65,8 +63,9 @@ $env:MODE           = $Mode
 $env:DASHBOARD_PORT = $DashboardPort
 $env:ROS_DOMAIN_ID  = $RosDomainId
 $env:DISPLAY        = "host.docker.internal:0.0"
-if ($NavConfig)   { $env:NAV_CONFIG   = $NavConfig   }
-if ($NavAdaptive) { $env:NAV_ADAPTIVE = $NavAdaptive }
+# Always overwrite (or clear) so stale session values don't leak into docker compose
+$env:NAV_CONFIG   = if ($NavConfig)   { $NavConfig }   else { "default" }
+$env:NAV_ADAPTIVE = if ($NavAdaptive) { $NavAdaptive } else { "" }
 
 # ── Build ──────────────────────────────────────────────────────────────────
 Write-Host "[run_windows] Building image..."
