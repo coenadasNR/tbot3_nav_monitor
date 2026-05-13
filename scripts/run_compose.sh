@@ -36,7 +36,7 @@ export MODE="${MODE:-slam}"
 export DASHBOARD_PORT="${DASHBOARD_PORT:-8080}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export NAV_CONFIG="${NAV_CONFIG:-default}"
-export NAV_ADAPTIVE="${NAV_ADAPTIVE:-}"
+export NAV_ADAPTIVE="${NAV_ADAPTIVE:-true}"
 
 # ── OS detection ───────────────────────────────────────────────────────────
 OS=$(uname -s)

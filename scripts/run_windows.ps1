@@ -65,7 +65,7 @@ $env:ROS_DOMAIN_ID  = $RosDomainId
 $env:DISPLAY        = "host.docker.internal:0.0"
 # Always overwrite (or clear) so stale session values don't leak into docker compose
 $env:NAV_CONFIG   = if ($NavConfig)   { $NavConfig }   else { "default" }
-$env:NAV_ADAPTIVE = if ($NavAdaptive) { $NavAdaptive } else { "" }
+$env:NAV_ADAPTIVE = if ($NavAdaptive) { $NavAdaptive } else { "true" }
 
 # ── Build ──────────────────────────────────────────────────────────────────
 Write-Host "[run_windows] Building image..."

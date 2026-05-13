@@ -163,12 +163,15 @@ Two optional variables control how a run is labelled and whether the adaptive no
 | Variable | What it does | Default |
 |---|---|---|
 | `NAV_CONFIG` | Free-form label written into the CSV filename and dashboard row — use it to name the run | `adaptive` |
-| `NAV_ADAPTIVE` | Set to `false` to disable the `adaptive_behavior` node. Omit to keep it enabled. Setting `NAV_CONFIG=baseline` also disables it automatically | enabled |
+| `NAV_ADAPTIVE` | Set to `false` to disable the `adaptive_behavior` node. Omit to keep it enabled | enabled |
 
 **Linux / macOS**
 ```bash
-# Baseline — adaptive node disabled
-WORLD=house MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
+# Adaptive (default) — NAV_ADAPTIVE omitted, defaults to enabled
+WORLD=house MODE=amcl ./scripts/run_compose.sh
+
+# Adaptive OFF
+WORLD=house MODE=amcl NAV_ADAPTIVE=false ./scripts/run_compose.sh
 
 # Custom label + adaptive OFF
 WORLD=house MODE=amcl NAV_CONFIG=my_config NAV_ADAPTIVE=false ./scripts/run_compose.sh
@@ -176,8 +179,8 @@ WORLD=house MODE=amcl NAV_CONFIG=my_config NAV_ADAPTIVE=false ./scripts/run_comp
 
 **Windows (PowerShell)** — pass as script parameters, not env vars:
 ```powershell
-# Baseline
-$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig baseline
+# Adaptive OFF
+$env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavAdaptive false
 
 # Custom label + adaptive OFF
 $env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavConfig my_config -NavAdaptive false
