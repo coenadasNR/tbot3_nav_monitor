@@ -1,0 +1,198 @@
+<svg viewBox="0 0 965 492" xmlns="http://www.w3.org/2000/svg"
+     font-family="'Segoe UI',Arial,sans-serif">
+  <title>tbot3_nav_monitor System Architecture</title>
+
+  <defs>
+    <marker id="ah"  markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#555"/></marker>
+    <marker id="ahb" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#1A6EA3"/></marker>
+    <marker id="ahg" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#1E8449"/></marker>
+    <marker id="aho" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#CC6A00"/></marker>
+    <marker id="ahp" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#6C2FA0"/></marker>
+    <marker id="ahr" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#9B2D24"/></marker>
+    <marker id="aht" markerWidth="7" markerHeight="6" refX="6" refY="3" orient="auto"><polygon points="0 0,7 3,0 6" fill="#0E7A61"/></marker>
+  </defs>
+
+  <!-- ── Zone backgrounds ─────────────────────────────────────────── -->
+  <rect x="5"   y="42" width="150" height="305" rx="7" fill="#E8F4FD" stroke="#AED6F1" stroke-width="1.2"/>
+  <text x="80"  y="59" text-anchor="middle" fill="#1A6EA3" font-size="9" font-weight="bold" letter-spacing="0.8">SIMULATION</text>
+
+  <rect x="161" y="42" width="148" height="305" rx="7" fill="#FEF9E7" stroke="#F0C040" stroke-width="1.2"/>
+  <text x="235" y="59" text-anchor="middle" fill="#8C5A00" font-size="9" font-weight="bold" letter-spacing="0.8">PATROL</text>
+
+  <rect x="315" y="42" width="202" height="305" rx="7" fill="#EAFAF1" stroke="#A9DFBF" stroke-width="1.2"/>
+  <text x="416" y="59" text-anchor="middle" fill="#1E8449" font-size="9" font-weight="bold" letter-spacing="0.8">NAV2 STACK</text>
+
+  <rect x="523" y="42" width="202" height="305" rx="7" fill="#F5EEF8" stroke="#C39BD3" stroke-width="1.2"/>
+  <text x="624" y="59" text-anchor="middle" fill="#5B2882" font-size="9" font-weight="bold" letter-spacing="0.8">MONITORING</text>
+
+  <rect x="731" y="42" width="224" height="305" rx="7" fill="#F8F9F9" stroke="#BDC3C7" stroke-width="1.2"/>
+  <text x="843" y="59" text-anchor="middle" fill="#4A5568" font-size="9" font-weight="bold" letter-spacing="0.8">DATA / UI</text>
+
+  <!-- ── Nodes ─────────────────────────────────────────────────────── -->
+
+  <!-- Gazebo -->
+  <rect x="15"  y="76" width="125" height="67" rx="5" fill="#1A6EA3"/>
+  <text x="77"  y="98"  text-anchor="middle" fill="white"   font-size="12" font-weight="bold">Gazebo</text>
+  <text x="77"  y="113" text-anchor="middle" fill="#AED6F1" font-size="9">TurtleBot3</text>
+  <text x="77"  y="126" text-anchor="middle" fill="#AED6F1" font-size="9">Simulation World</text>
+
+  <!-- dynamic_obstacles -->
+  <rect x="15"  y="234" width="125" height="58" rx="5" fill="#4A90C8"/>
+  <text x="77"  y="256" text-anchor="middle" fill="white"   font-size="10" font-weight="bold">dynamic_obstacles</text>
+  <text x="77"  y="270" text-anchor="middle" fill="#D6EAF8" font-size="9">physics boxes</text>
+  <text x="77"  y="283" text-anchor="middle" fill="#D6EAF8" font-size="9">/obs_N/cmd_vel</text>
+
+  <!-- waypoint_patrol — ROS2 Node (not a lifecycle node) -->
+  <rect x="171" y="76" width="130" height="67" rx="5" fill="#CC6A00"/>
+  <text x="236" y="99"  text-anchor="middle" fill="white"   font-size="11" font-weight="bold">waypoint_patrol</text>
+  <text x="236" y="114" text-anchor="middle" fill="#FFD9A0" font-size="9">ROS2 Node</text>
+  <text x="236" y="129" text-anchor="middle" fill="#FFD9A0" font-size="9">10-waypoint loop</text>
+
+  <!-- navigate_to_pose action server -->
+  <rect x="326" y="68" width="180" height="47" rx="5" fill="#1E8449"/>
+  <text x="416" y="88"  text-anchor="middle" fill="white"   font-size="11" font-weight="bold">navigate_to_pose</text>
+  <text x="416" y="103" text-anchor="middle" fill="#A9DFBF" font-size="9">action server</text>
+
+  <!-- Nav2 internals -->
+  <rect x="326" y="122" width="180" height="173" rx="5" fill="#27AE60"/>
+  <text x="416" y="143" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">controller_server</text>
+  <text x="416" y="158" text-anchor="middle" fill="#D5F5E3" font-size="9">RegulatedPurePursuit</text>
+  <line x1="331" y1="166" x2="501" y2="166" stroke="#A9DFBF" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <text x="416" y="183" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">local_costmap</text>
+  <text x="416" y="198" text-anchor="middle" fill="#D5F5E3" font-size="9">inflation layer</text>
+  <line x1="331" y1="206" x2="501" y2="206" stroke="#A9DFBF" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <text x="416" y="224" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">AMCL</text>
+  <text x="416" y="239" text-anchor="middle" fill="#D5F5E3" font-size="9">localisation</text>
+  <line x1="331" y1="247" x2="501" y2="247" stroke="#A9DFBF" stroke-width="0.8" stroke-dasharray="3,2"/>
+  <text x="416" y="265" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">NavFn Planner</text>
+  <text x="416" y="280" text-anchor="middle" fill="#D5F5E3" font-size="9">global planning</text>
+
+  <!-- metrics_collector -->
+  <rect x="533" y="72" width="182" height="76" rx="5" fill="#6C2FA0"/>
+  <text x="624" y="94"  text-anchor="middle" fill="white"   font-size="11" font-weight="bold">metrics_collector</text>
+  <text x="624" y="109" text-anchor="middle" fill="#E8DAEF" font-size="9">Lifecycle Node</text>
+  <text x="624" y="123" text-anchor="middle" fill="#E8DAEF" font-size="9">accuracy · efficiency</text>
+  <text x="624" y="137" text-anchor="middle" fill="#E8DAEF" font-size="9">recovery · battery</text>
+
+  <!-- adaptive_behavior -->
+  <rect x="533" y="226" width="182" height="72" rx="5" fill="#9B2D24"/>
+  <text x="624" y="248" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">adaptive_behavior</text>
+  <text x="624" y="263" text-anchor="middle" fill="#FADBD8" font-size="9">Lifecycle Node</text>
+  <text x="624" y="277" text-anchor="middle" fill="#FADBD8" font-size="9">tunes Nav2 params · window=5</text>
+
+  <!-- data_logger -->
+  <rect x="741" y="72" width="210" height="70" rx="5" fill="#0E7A61"/>
+  <text x="846" y="95"  text-anchor="middle" fill="white"   font-size="12" font-weight="bold">data_logger</text>
+  <text x="846" y="111" text-anchor="middle" fill="#D1F2EB" font-size="9">ROS2 Node · CSV writer</text>
+  <text x="846" y="126" text-anchor="middle" fill="#D1F2EB" font-size="9">alert thresholds</text>
+
+  <!-- web_dashboard -->
+  <rect x="741" y="226" width="210" height="70" rx="5" fill="#154A72"/>
+  <text x="846" y="250" text-anchor="middle" fill="white"   font-size="12" font-weight="bold">web_dashboard</text>
+  <text x="846" y="265" text-anchor="middle" fill="#D6EAF8" font-size="9">Lifecycle Node</text>
+  <text x="846" y="280" text-anchor="middle" fill="#D6EAF8" font-size="9">Flask REST API :8080</text>
+
+  <!-- ── Output strip ─────────────────────────────────────────────── -->
+  <rect x="5" y="388" width="950" height="94" rx="7" fill="#ECEFF1" stroke="#B0BEC5" stroke-width="1.2"/>
+  <text x="480" y="406" text-anchor="middle" fill="#78909C" font-size="9" font-weight="bold" letter-spacing="0.8">EXTERNAL</text>
+
+  <rect x="60"  y="413" width="120" height="52" rx="5" fill="#78909C"/>
+  <text x="120" y="436" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">RViz2</text>
+  <text x="120" y="452" text-anchor="middle" fill="#ECEFF1" font-size="9">TF · costmap · path</text>
+
+  <rect x="380" y="413" width="135" height="52" rx="5" fill="#78909C"/>
+  <text x="447" y="436" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">CSV Files</text>
+  <text x="447" y="452" text-anchor="middle" fill="#ECEFF1" font-size="9">nav_metrics_*.csv</text>
+
+  <rect x="718" y="413" width="220" height="52" rx="5" fill="#3D4E5C"/>
+  <text x="828" y="436" text-anchor="middle" fill="white"   font-size="11" font-weight="bold">Web Browser</text>
+  <text x="828" y="452" text-anchor="middle" fill="#B0BEC5" font-size="9">live dashboard + alerts</text>
+
+  <!-- ── Arrows ──────────────────────────────────────────────────────
+       1.  DynObs → Gazebo          (vertical, x=77)
+       2.  Gazebo → Nav2            (above zones, y=15)
+       3.  waypoint_patrol → Nav2   (x=315 gap)
+       4.  Nav2 → waypoint_patrol   (result/status, x=319)
+       5.  waypoint_patrol → metrics_collector  (above zones, y=32, dashed)
+       6.  Nav2 → metrics_collector (gap x=519)
+       7.  metrics_collector → adaptive_behavior (vertical x=624)
+       8.  metrics_collector → data_logger       (horizontal y=104)
+       9.  metrics_collector → web_dashboard     (dashed, x=728)
+       10. adaptive_behavior → Nav2 SetParameters (horizontal y=259)
+       11. adaptive_behavior → data_logger        (bottom route y=353, dashed)
+       12. web_dashboard → Browser                (vertical x=875)
+       13. data_logger → CSV Files                (bottom route y=371)
+       14. Nav2 → RViz2                           (bottom route y=386, dashed)
+  ─────────────────────────────────────────────────────────────────── -->
+
+  <!-- 1. DynObs → Gazebo -->
+  <line x1="77" y1="234" x2="77" y2="143" stroke="#4A90C8" stroke-width="1.5" marker-end="url(#ahb)"/>
+  <text x="86" y="192" fill="#1A6EA3" font-size="8">/obs_N/cmd_vel</text>
+
+  <!-- 2. Gazebo → Nav2 action server (above zones y=15) -->
+  <path d="M77,76 L77,15 L416,15 L416,68" stroke="#1A6EA3" stroke-width="1.5" fill="none" marker-end="url(#ahb)"/>
+  <text x="238" y="11" text-anchor="middle" fill="#1A6EA3" font-size="8">sensors / odom / TF (Gazebo plugin)</text>
+
+  <!-- 3. waypoint_patrol → navigate_to_pose goal -->
+  <path d="M301,102 L315,102 L315,91 L326,91" stroke="#CC6A00" stroke-width="1.5" fill="none" marker-end="url(#aho)"/>
+  <text x="309" y="88"  text-anchor="middle" fill="#8C5A00" font-size="8">action</text>
+  <text x="309" y="98"  text-anchor="middle" fill="#8C5A00" font-size="8">goal</text>
+
+  <!-- 4. Nav2 → waypoint_patrol result/status -->
+  <path d="M326,109 L319,109 L319,128 L301,128" stroke="#27AE60" stroke-width="1.5" fill="none" marker-end="url(#ahg)"/>
+  <text x="309" y="122" text-anchor="middle" fill="#1E8449" font-size="8">status</text>
+
+  <!-- 5. waypoint_patrol → metrics_collector (above zones y=32, dashed) -->
+  <path d="M236,76 L236,32 L624,32 L624,72" stroke="#CC6A00" stroke-width="1.4" fill="none" stroke-dasharray="5,3" marker-end="url(#aho)"/>
+  <text x="445" y="28" text-anchor="middle" fill="#8C5A00" font-size="8">target_pose · preempted_goal_id</text>
+
+  <!-- 6. Nav2 → metrics_collector -->
+  <path d="M506,168 L519,168 L519,110 L533,110" stroke="#27AE60" stroke-width="1.5" fill="none" marker-end="url(#ahg)"/>
+  <text x="511" y="136" text-anchor="end" fill="#1E8449" font-size="8">goal</text>
+  <text x="511" y="147" text-anchor="end" fill="#1E8449" font-size="8">status</text>
+  <text x="511" y="158" text-anchor="end" fill="#1E8449" font-size="8">+ TF</text>
+
+  <!-- 7. metrics_collector → adaptive_behavior -->
+  <line x1="624" y1="148" x2="624" y2="226" stroke="#6C2FA0" stroke-width="1.8" marker-end="url(#ahp)"/>
+  <text x="650" y="178" fill="#5B2882" font-size="8">accuracy</text>
+  <text x="650" y="190" fill="#5B2882" font-size="8">efficiency</text>
+  <text x="650" y="202" fill="#5B2882" font-size="8">recovery</text>
+
+  <!-- 8. metrics_collector → data_logger -->
+  <line x1="715" y1="104" x2="741" y2="104" stroke="#6C2FA0" stroke-width="1.5" marker-end="url(#ahp)"/>
+  <text x="728" y="97" text-anchor="middle" fill="#5B2882" font-size="8">live_data</text>
+
+  <!-- 9. metrics_collector → web_dashboard (dashed, x=728) -->
+  <path d="M715,126 L728,126 L728,261 L741,261" stroke="#6C2FA0" stroke-width="1.4" fill="none" stroke-dasharray="4,3" marker-end="url(#ahp)"/>
+  <text x="736" y="200" text-anchor="middle" fill="#5B2882" font-size="8">live_data</text>
+  <text x="736" y="211" text-anchor="middle" fill="#5B2882" font-size="8">+ alerts</text>
+
+  <!-- 10. adaptive_behavior → Nav2 SetParameters -->
+  <line x1="533" y1="259" x2="506" y2="259" stroke="#9B2D24" stroke-width="1.5" marker-end="url(#ahr)"/>
+  <text x="520" y="252" text-anchor="middle" fill="#9B2D24" font-size="8">Set</text>
+  <text x="520" y="263" text-anchor="middle" fill="#9B2D24" font-size="8">Params</text>
+
+  <!-- 11. adaptive_behavior → data_logger (bottom route y=353, dashed) -->
+  <path d="M624,298 L624,353 L860,353 L860,142" stroke="#9B2D24" stroke-width="1.4" fill="none" stroke-dasharray="5,3" marker-end="url(#ahr)"/>
+  <text x="748" y="347" text-anchor="middle" fill="#9B2D24" font-size="8">param_adjustments</text>
+
+  <!-- 12. web_dashboard → Browser -->
+  <line x1="875" y1="296" x2="875" y2="413" stroke="#154A72" stroke-width="1.5" marker-end="url(#ah)"/>
+
+  <!-- 13. data_logger → CSV Files (bottom route y=371) -->
+  <path d="M795,142 L795,371 L447,371 L447,413" stroke="#0E7A61" stroke-width="1.5" fill="none" marker-end="url(#aht)"/>
+  <text x="600" y="365" text-anchor="middle" fill="#0E7A61" font-size="8">write rows</text>
+
+  <!-- 14. Nav2 → RViz2 (bottom route y=386, dashed) -->
+  <path d="M370,295 L370,386 L120,386 L120,413" stroke="#78909C" stroke-width="1.4" fill="none" stroke-dasharray="4,3" marker-end="url(#ah)"/>
+  <text x="240" y="381" text-anchor="middle" fill="#78909C" font-size="8">TF · costmap · path</text>
+
+  <!-- ── Legend ────────────────────────────────────────────────────── -->
+  <text x="8"   y="362" fill="#555" font-size="8" font-weight="bold">ARROWS: </text>
+  <line x1="62"  y1="358" x2="84"  y2="358" stroke="#555" stroke-width="1.4" marker-end="url(#ah)"/>
+  <text x="87"  y="362" fill="#555" font-size="8">continuous = live ROS topic</text>
+  <line x1="200" y1="358" x2="222" y2="358" stroke="#555" stroke-width="1.4" stroke-dasharray="4,3" marker-end="url(#ah)"/>
+  <text x="225" y="362" fill="#555" font-size="8">dashed = periodic / derived</text>
+  <line x1="355" y1="358" x2="377" y2="358" stroke="#9B2D24" stroke-width="1.4" marker-end="url(#ahr)"/>
+  <text x="380" y="362" fill="#9B2D24" font-size="8">red = parameter write-back</text>
+</svg>

@@ -5,39 +5,14 @@ Real-time navigation performance monitor and adaptive behavior controller for **
 The package observes a Nav2 navigation stack from the side, computes performance metrics live, dynamically reconfigures Nav2 parameters when navigation degrades, logs every metric tick to CSV, and exposes a web dashboard outside the container.
 
 > **Submission for the AI4I (Italian Institute of Artificial Intelligence) PhD application.**
-> Demo video: **<paste link here>** (5-minute walkthrough of all three worlds, dashboard, adaptive behavior, and CSV logs)
+
+<video src="assets/demo.mp4" controls width="100%"></video>
 
 ---
 
 ## 1. Architecture
 
-```
-                        ┌──────────────────────┐
-                        │      Nav2 stack      │
-                        │ (Gazebo + AMCL)      │
-                        └─────┬─────────┬──────┘
-            /tf, /odom        │         │  /navigate_to_pose action
-                              │         │
-                  ┌───────────▼─────────▼──────────┐
-                  │     metrics_collector          │   lifecycle node
-                  │  goal start/end + TF tracking  │
-                  └───┬───────────┬────────────┬───┘
-        live JSON     │           │            │  per-metric topics
-                      │           │            │
-        ┌─────────────▼─┐  ┌──────▼─────┐  ┌───▼─────────────┐
-        │ web_dashboard │  │ data_logger│  │adaptive_behavior│
-        │  Flask :8080  │  │   CSV      │  │ tunes Nav2 via  │
-        │  charts/table │  │  + alerts  │  │  SetParameters  │
-        └───────────────┘  └────────────┘  └─────────────────┘
-                                                   ▲
-                                                   │ /goal_pose (RViz2)
-                                ┌──────────────────┴────┐
-                                │   waypoint_patrol     │
-                                │  cycles per-world     │
-                                │  goals, supports      │
-                                │  manual interruption  │
-                                └───────────────────────┘
-```
+![Architecture diagram](assets/architecture.svg)
 
 Five Python nodes, three of them lifecycle nodes:
 
