@@ -294,12 +294,12 @@ Then run from the repo root:
 
 ```bash
 # Linux / macOS
-cd src/tbot3_nav_monitor && python3 -m pytest test/ -v
+python3 -m pytest src/tbot3_nav_monitor/test/ -v
 ```
 
 ```powershell
 # Windows (PowerShell)
-cd src/tbot3_nav_monitor; python -m pytest test/ -v
+python -m pytest src/tbot3_nav_monitor/test/ -v
 ```
 
 68 unit tests (no live ROS2 required — `conftest.py` provides class stubs):
