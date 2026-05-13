@@ -20,6 +20,8 @@ class DataLoggerNode(Node):
         super().__init__('data_logger')
 
         self.declare_parameter('data_dir', '/ros2_ws/data/csv')
+        self.declare_parameter('config', 'default')
+        self.declare_parameter('world', 'unknown')
         self.declare_parameter('flush_every_n', 10)
         # Alert thresholds as ROS parameters — reconfigurable at runtime
         self.declare_parameter('alert_battery_pct',      20.0)
@@ -30,12 +32,15 @@ class DataLoggerNode(Node):
         data_dir = Path(self.get_parameter('data_dir').value)
         data_dir.mkdir(parents=True, exist_ok=True)
 
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self._csv_path = data_dir / f'nav_metrics_{ts}.csv'
+        raw_config = self.get_parameter('config').value
+        self._config = 'adaptive' if raw_config == 'default' else raw_config
+        world = self.get_parameter('world').value
 
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self._csv_path = data_dir / f'nav_metrics_{world}_{self._config}_{ts}.csv'
         self._csv_file = open(self._csv_path, 'w', newline='')
         self._writer = csv.DictWriter(self._csv_file, fieldnames=[
-            'timestamp', 'world', 'execution_time_s', 'nav_accuracy_m',
+            'timestamp', 'world', 'config', 'execution_time_s', 'nav_accuracy_m',
             'path_efficiency', 'recovery_count', 'battery_pct',
             'total_distance_m', 'navigation_active', 'goals_completed',
             'goals_failed', 'goals_canceled', 'goal_status'
@@ -67,7 +72,7 @@ class DataLoggerNode(Node):
         except json.JSONDecodeError:
             return
 
-        self._writer.writerow(data)
+        self._writer.writerow({**data, 'config': self._config})
         self._row_count += 1
 
         flush_n = self.get_parameter('flush_every_n').value
