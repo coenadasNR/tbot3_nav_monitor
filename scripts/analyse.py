@@ -20,6 +20,17 @@ import pandas as pd
 
 # ── colour palette ────────────────────────────────────────────────────────────
 COLOURS = {'adaptive': '#2196F3', 'baseline': '#FF5722'}
+_EXTRA_COLOURS = ['#9C27B0', '#FFC107', '#E91E63', '#00BCD4', '#795548', '#4CAF50']
+_dynamic_colours = {}
+
+def get_colour(cfg: str) -> str:
+    if cfg in COLOURS:
+        return COLOURS[cfg]
+    if cfg not in _dynamic_colours:
+        idx = len(_dynamic_colours) % len(_EXTRA_COLOURS)
+        _dynamic_colours[cfg] = _EXTRA_COLOURS[idx]
+    return _dynamic_colours[cfg]
+
 ALPHA_LINE = 0.85
 ALPHA_FILL = 0.15
 FIG_DPI = 150
@@ -88,7 +99,7 @@ def plot_summary_bar(df: pd.DataFrame, out_dir: Path) -> None:
 
     n_metrics = len(metrics)
     fig, axes = plt.subplots(1, n_metrics, figsize=(4 * n_metrics, 4.5))
-    fig.suptitle(f'Adaptive vs Baseline — Aggregate Comparison ({world} World)', fontsize=13, fontweight='bold', y=1.02)
+    fig.suptitle(f'Config Comparison — Aggregate Metrics ({world} World)', fontsize=13, fontweight='bold', y=1.02)
 
     x = np.arange(len(configs))
     for ax, (label, fn) in zip(axes, metrics.items()):
@@ -97,7 +108,7 @@ def plot_summary_bar(df: pd.DataFrame, out_dir: Path) -> None:
         for cfg in configs:
             v = fn(df[df['config'] == cfg])
             values.append(v if not np.isnan(v) else 0)
-            colours.append(COLOURS.get(cfg, '#888'))
+            colours.append(get_colour(cfg))
 
         bars = ax.bar(x, values, color=colours, width=0.5, edgecolor='white', linewidth=0.8)
         for bar, val in zip(bars, values):
@@ -110,7 +121,7 @@ def plot_summary_bar(df: pd.DataFrame, out_dir: Path) -> None:
         ax.set_ylim(0, max(values) * 1.25 + 1e-6)
         ax.spines[['top', 'right']].set_visible(False)
 
-    handles = [mpatches.Patch(color=COLOURS.get(c, '#888'), label=c.title()) for c in configs]
+    handles = [mpatches.Patch(color=get_colour(c), label=c.title()) for c in configs]
     fig.legend(handles=handles, loc='lower center', ncol=len(configs),
                bbox_to_anchor=(0.5, -0.04), fontsize=10)
     save(fig, out_dir / 'summary_bar.png')
@@ -122,7 +133,7 @@ def plot_recovery_over_time(df: pd.DataFrame, out_dir: Path) -> None:
     fig, ax = plt.subplots(figsize=(9, 4))
     for cfg, gdf in df.groupby('config'):
         t = gdf['timestamp'] - gdf['timestamp'].min()
-        colour = COLOURS.get(cfg, '#888')
+        colour = get_colour(cfg)
         ax.plot(t, gdf['recovery_count'], label=cfg.title(), color=colour, alpha=ALPHA_LINE, linewidth=1.4)
 
     ax.set_xlabel('Elapsed Time (s)')
@@ -143,7 +154,7 @@ def plot_efficiency_over_time(df: pd.DataFrame, out_dir: Path) -> None:
 
     fig, ax = plt.subplots(figsize=(9, 4))
     for cfg, gdf in goal_rows.groupby('config'):
-        colour = COLOURS.get(cfg, '#888')
+        colour = get_colour(cfg)
         t = gdf['timestamp'] - df[df['config'] == cfg]['timestamp'].min()
         ax.plot(t, gdf['path_efficiency'], 'o-', label=cfg.title(),
                 color=colour, alpha=ALPHA_LINE, linewidth=1.4, markersize=5)
@@ -172,7 +183,7 @@ def plot_execution_time_dist(df: pd.DataFrame, out_dir: Path) -> None:
     bp = ax.boxplot(data, tick_labels=[c.title() for c in configs], patch_artist=True, notch=False,
                     medianprops=dict(color='white', linewidth=2))
     for patch, cfg in zip(bp['boxes'], configs):
-        patch.set_facecolor(COLOURS.get(cfg, '#888'))
+        patch.set_facecolor(get_colour(cfg))
         patch.set_alpha(0.75)
 
     ax.set_ylabel('Execution Time (s)')
@@ -238,22 +249,28 @@ def plot_goal_outcomes(df: pd.DataFrame, out_dir: Path) -> None:
 
 
 def print_summary_table(df: pd.DataFrame) -> None:
-    configs = sorted(df['config'].unique(), key=lambda c: (c != 'adaptive'))
-    print('\n' + '=' * 62)
-    print(f'{"Metric":<32} {"Adaptive":>13} {"Baseline":>13}')
-    print('=' * 62)
+    configs = sorted(df['config'].unique(), key=lambda c: (c != 'adaptive', c))
+    
+    # Calculate row width: 32 chars for label + 14 chars per config
+    row_width = 32 + (14 * len(configs))
+    
+    print('\n' + '=' * row_width)
+    header = f'{"Metric":<32}'
+    for c in configs:
+        header += f'{c.title():>14}'
+    print(header)
+    print('=' * row_width)
 
     def row(label, fn, fmt='.2f'):
-        vals = []
+        out = f'{label:<32}'
         for cfg in configs:
             try:
                 v = fn(df[df['config'] == cfg])
-                vals.append(f'{v:{fmt}}')
+                val_str = f'{v:{fmt}}'
             except Exception:
-                vals.append('  n/a')
-        pad = [''] * (2 - len(vals))
-        all_vals = vals + pad
-        print(f'{label:<32} {all_vals[0]:>13} {all_vals[1]:>13}')
+                val_str = 'n/a'
+            out += f'{val_str:>14}'
+        print(out)
 
     active = lambda d: d[d['execution_time_s'] > 0]
     eff    = lambda d: completed_goal_rows(d)['path_efficiency']
@@ -272,7 +289,11 @@ def print_summary_table(df: pd.DataFrame) -> None:
     row('Avg exec time (s)', lambda d: active(d)['execution_time_s'].mean() if len(active(d)) > 0 else float('nan'))
     row('Battery remaining (%)', lambda d: d['battery_pct'].min())
     row('Total distance (m)', lambda d: d['total_distance_m'].max())
-    print('=' * 62)
+    
+    # Recalculate row_width locally to close the table cleanly
+    configs = sorted(df['config'].unique(), key=lambda c: (c != 'adaptive', c))
+    row_width = 32 + (14 * len(configs))
+    print('=' * row_width)
 
 
 # ── main ──────────────────────────────────────────────────────────────────────
