@@ -234,7 +234,13 @@ pip install -r requirements.txt
 Then run the script:
 
 ```bash
+# Linux / macOS
 python3 scripts/analyse.py --data-dir data/csv --out-dir data/plots/<world> --world <world>
+```
+
+```powershell
+# Windows (PowerShell)
+python scripts/analyse.py --data-dir data/csv --out-dir data/plots/<world> --world <world>
 ```
 
 They include summary bars, efficiency over time, recovery over time, execution time distributions, battery drain, and goal outcomes. See the respective `data/plots/<world>/` directories for all generated figures.
@@ -311,7 +317,7 @@ tbot3_nav_monitor/
 
 ---
 
-## 11. Docker Hub
+## 12. Docker Hub
 
 ```bash
 docker pull <DOCKERHUB_USER>/tbot3_nav_monitor:latest
@@ -322,7 +328,7 @@ Image tag: `<DOCKERHUB_USER>/tbot3_nav_monitor:latest`.
 
 ---
 
-## 12. Implementation notes
+## 13. Implementation notes
 
 - **Lifecycle nodes** are used wherever the node has external dependencies (Nav2, TF, action server, Flask) — `on_configure` creates subscriptions, `on_activate` starts timers, ensuring clean startup ordering.
 - **Path efficiency** is computed as `‖target − start‖ / actual_path_length`, snapshotting `target` and `start` at goal-start so a preempting manual goal cannot corrupt the metric of the goal it preempted.
