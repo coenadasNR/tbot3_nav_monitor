@@ -37,6 +37,7 @@ services:
     environment:
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
+      - NAV_CONFIG=${NAV_CONFIG:-default}
       - TURTLEBOT3_MODEL=burger
     volumes:
       - ./data:/ros2_ws/data:rw
@@ -54,6 +55,8 @@ services:
       echo '[monitor] Nav2 ready — launching monitor nodes';
       ros2 launch tbot3_nav_monitor monitor.launch.py
         world:=${WORLD:?WORLD must be set}
+        config:=${NAV_CONFIG:-default}
+        adaptive:=$([ \"${NAV_CONFIG:-default}\" = \"baseline\" ] && echo false || echo true)
         dashboard_port:=${DASHBOARD_PORT:-8080}"
 
 networks:
