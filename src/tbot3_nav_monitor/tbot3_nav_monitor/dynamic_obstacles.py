@@ -13,7 +13,7 @@ class DynamicObstaclesNode(Node):
     def __init__(self):
         super().__init__('dynamic_obstacles')
 
-        self.declare_parameter('speed', 0.2)
+        self.declare_parameter('speed', 0.1)
         self.declare_parameter('half_period_sec', 5.0)
 
         self._pub1 = self.create_publisher(Twist, '/dynamic_obs_1/cmd_vel', 10)
