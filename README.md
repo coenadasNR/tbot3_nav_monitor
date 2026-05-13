@@ -100,10 +100,7 @@ $env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1
 
 Once Nav2 reports ready (~30 s after launch):
 
-```
-http://localhost:8080        ← metrics dashboard (all platforms)
-http://localhost:6080        ← Gazebo/RViz2 desktop (macOS only)
-```
+**[http://localhost:8080](http://localhost:8080)** — metrics dashboard (all platforms)
 
 The patrol begins automatically and goals start appearing on the dashboard.
 
