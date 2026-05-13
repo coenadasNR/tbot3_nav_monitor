@@ -274,9 +274,32 @@ Send a `/goal_pose` from RViz2 ("2D Goal Pose" tool) at any time. The patrol pau
 
 ## 10. Testing
 
+Tests run on the host (no container needed) — `conftest.py` stubs all ROS2 packages.
+
+Install dependencies first if you haven't already:
+
 ```bash
-cd src/tbot3_nav_monitor
-python3 -m pytest test/ -v
+# Linux / macOS
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+```powershell
+# Windows (PowerShell)
+python -m venv .venv; .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Then run from the repo root:
+
+```bash
+# Linux / macOS
+cd src/tbot3_nav_monitor && python3 -m pytest test/ -v
+```
+
+```powershell
+# Windows (PowerShell)
+cd src/tbot3_nav_monitor; python -m pytest test/ -v
 ```
 
 68 unit tests (no live ROS2 required — `conftest.py` provides class stubs):
