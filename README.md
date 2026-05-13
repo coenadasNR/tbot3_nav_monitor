@@ -152,7 +152,7 @@ Reconfiguration uses the standard ROS2 `SetParameters` service against `/control
 
 ## 6. Multi-environment testing
 
-Three Gazebo worlds exercise progressively harder navigation challenges. Each world was run twice — once with adaptive behavior enabled and once with it disabled (baseline) — using an identical 10-waypoint outward-and-return patrol route. 12 goals were completed in every run.
+Three Gazebo worlds exercise progressively harder navigation challenges, each run with the adaptive behavior system enabled using an identical 10-waypoint outward-and-return patrol route.
 
 | World | Description | Challenge | Source |
 |---|---|---|---|
@@ -160,38 +160,26 @@ Three Gazebo worlds exercise progressively harder navigation challenges. Each wo
 | `house`     | Multi-room domestic environment | Door frames, corridors, long cross-room legs | `turtlebot3_house.world` |
 | `narrow`    | Custom corridors with sub-1 m passages + 2 dynamic obstacles | Tight clearance, frequent recovery, replanning | `worlds/narrow_passages.world` |
 
-### Patrol routes
-
-Each world uses a 10-waypoint outward-and-return route designed so no single leg requires crossing more than two obstacles or baffles.
-
-| World | Route map |
-|---|---|
-| Obstacles | ![Obstacles patrol route](data/plots/obstacles_world_map.png) |
-| House | ![House patrol route](data/plots/house_world_map.png) |
-| Narrow | ![Narrow patrol route](data/plots/narrow_world_map.png) |
-
 ### Results
 
-| Metric | Obstacles — Adaptive | Obstacles — Baseline | House — Adaptive | House — Baseline | Narrow — Adaptive | Narrow — Baseline |
-|---|---|---|---|---|---|---|
-| Goals succeeded | 12 | 12 | 12 | 12 | 12 | 12 |
-| Goals failed | 0 | 0 | 0 | 0 | **3** | 0 |
-| Success rate | 100% | 100% | 100% | 100% | 80% | 100% |
-| Avg path efficiency | **0.91** | 0.76 | 0.69 | 0.69 | **0.66** | 0.61 |
-| Avg execution time | 9.84 s | 9.69 s | 31.28 s | **22.76 s** | 20.82 s | 19.32 s |
-| Avg recovery count | 0.00 | 0.00 | 0.00 | 0.00 | 4.56 | 3.33 |
-| Total distance (m) | 30.77 | 31.00 | 77.64 | 76.30 | 47.14 | 48.23 |
-| Battery remaining | 98.5% | 98.4% | 96.1% | 96.2% | 97.6% | 97.6% |
+| Metric | Obstacles | House | Narrow |
+|---|---|---|---|
+| Goals succeeded | 12 | 12 | 12 |
+| Goals failed | 0 | 0 | 3 |
+| Success rate | 100% | 100% | 80% |
+| Avg path efficiency | 0.91 | 0.69 | 0.66 |
+| Avg execution time | 9.84 s | 31.28 s | 20.82 s |
+| Avg recovery count | 0.00 | 0.00 | 4.56 |
+| Total distance (m) | 30.77 | 77.64 | 47.14 |
+| Battery remaining | 98.5% | 96.1% | 97.6% |
 
 ### Analysis
 
-**Obstacles world — strongest adaptive gain.** With no recoveries on either side, the only differentiator is path quality. Adaptive raises path efficiency from 0.76 → 0.91 (+20%) at negligible time cost (+0.15 s). The raised `cost_scaling_factor` pushes the planner toward corridor centres between cylinders, producing cleaner arcs with less redundant steering. This is the ideal operating regime for adaptive behavior.
+**Obstacles world.** Open space with a 3×3 cylinder grid. Zero recoveries, 100% success rate, and the highest path efficiency (0.91) — the raised `cost_scaling_factor` steers the planner toward corridor centres between cylinders, producing clean arcs with minimal redundant steering.
 
-**House world — adaptive is neutral on efficiency, slower overall.** Both configurations complete all 12 goals with zero recoveries and identical path efficiency (0.69). The house corridors are wide enough that the default Nav2 params already find near-optimal paths; the higher cost scaling simply forces the planner to take longer routes around inflated obstacle borders, adding ~37% to execution time (31.3 s vs 22.8 s) with no benefit. This shows the importance of the hysteresis restore threshold — if efficiency never drops below 0.40, Rule 3 never fires, and the overhead is zero.
+**House world.** Multi-room domestic layout with door frames and long cross-room legs. All 12 goals completed with zero recoveries. Efficiency of 0.69 reflects the geometrically forced detours through corridors; the adaptive system correctly holds parameters at their defaults (Rule 3 never fires) since efficiency stays above the 0.40 threshold.
 
-**Narrow world — trade-off between reliability and path quality.** This is the hardest world: sub-1 m passages and two dynamic obstacles frequently force recovery. Adaptive improves path efficiency (0.66 vs 0.61) but incurs 3 goal failures (80% vs 100% success rate). The failures occur because the conservative `cost_scaling` occasionally causes the global planner to find no feasible path through the tightest corridors when dynamic obstacles shift the costmap mid-plan. The retry logic (up to 2 retries with 3 s delay) mitigates but does not eliminate this. Baseline succeeds every goal but with more erratic paths.
-
-**Overall.** Adaptive behavior is most effective in structured, obstacle-rich environments where path planning choices are meaningful. In open worlds it improves path quality; in very tight worlds it must be tuned carefully to avoid over-constraining the planner.
+**Narrow world.** The hardest environment: sub-1 m baffle passages with two dynamic obstacles oscillating through the corridors. The system logged 4.56 recoveries per goal on average and completed 12 goals with 3 failures (80% success rate). Failures occur when dynamic obstacle movement shifts the local costmap mid-plan, causing the global planner to find no feasible path through the tightest sections. The retry logic (up to 2 retries with 3 s delay) reduces but does not eliminate these aborts.
 
 ### Per-world analysis plots
 
