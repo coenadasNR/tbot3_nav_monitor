@@ -86,6 +86,7 @@ class MetricsCollectorNode(LifecycleNode):
         self._battery_alert_sent: bool = False
         self._is_canceling: bool = False
         self._preempted_goal_ids: set = set()   # UUIDs patrol explicitly superseded
+        self._deferred_active_goal = None        # goal held while waiting for target pose
 
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
@@ -217,6 +218,10 @@ class MetricsCollectorNode(LifecycleNode):
     def _goal_pose_callback(self, msg: PoseStamped) -> None:
         self._target_pose = (msg.pose.position.x, msg.pose.position.y)
         self.get_logger().info(f'Target pose captured: {self._target_pose}')
+        # If a goal was deferred waiting for this pose, start tracking it now
+        if self._deferred_active_goal is not None and not self._navigation_active:
+            self._start_goal_tracking(self._deferred_active_goal)
+            self._deferred_active_goal = None
 
     def _preempted_goal_callback(self, msg: String) -> None:
         """waypoint_patrol publishes the UUID it is about to supersede before sending the
@@ -293,27 +298,31 @@ class MetricsCollectorNode(LifecycleNode):
 
         # Detect new ACTIVE goal — only if we are not currently tracking one.
         if active_goal and not self._navigation_active:
-            gid = str(active_goal.goal_info.goal_id.uuid)
-
-            # /goal_pose and /nav_monitor/target_pose update _target_pose; if neither has
-            # arrived yet we defer rather than snapshot a stale patrol waypoint.
             if self._target_pose is None:
+                # Pose not yet received — store the goal and start tracking the moment
+                # _goal_pose_callback delivers the pose (avoids missing the first goal
+                # on cold-boot under heavy system load).
                 self.get_logger().warn(
                     'Goal executing but target pose not yet received — deferring goal start'
                 )
+                self._deferred_active_goal = active_goal
                 return
-            
-            self.get_logger().info(f'Goal active: {gid[:8]}')
-            self._navigation_active = True
-            self._has_navigated = True
-            self._goal_status = 'ACTIVE'
-            self._active_goal_id = gid
-            self._start_pose = self._current_pose
-            self._active_target_pose = self._target_pose
-            self._goal_start_time = time.monotonic()
-            self._path_length_m = 0.0
-            self._recovery_count = 0
+            self._start_goal_tracking(active_goal)
 
+
+    def _start_goal_tracking(self, active_goal) -> None:
+        gid = str(active_goal.goal_info.goal_id.uuid)
+        self.get_logger().info(f'Goal active: {gid[:8]}')
+        self._navigation_active = True
+        self._has_navigated = True
+        self._goal_status = 'ACTIVE'
+        self._active_goal_id = gid
+        self._start_pose = self._current_pose
+        self._active_target_pose = self._target_pose
+        self._goal_start_time = time.monotonic()
+        self._path_length_m = 0.0
+        self._recovery_count = 0
+        self._is_canceling = False
 
     def _handle_goal_end(self, status: int) -> None:
         self.get_logger().info(f'Goal ended with status {status}')
