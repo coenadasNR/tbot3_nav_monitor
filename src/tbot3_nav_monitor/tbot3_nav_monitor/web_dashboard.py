@@ -254,19 +254,17 @@ async function loadSummary() {
   try {
     const r = await fetch('/api/summary');
     const s = await r.json();
-    if (s.error || !s.worlds || Object.keys(s.worlds).length === 0) {
+    if (s.error || !s.rows || s.rows.length === 0) {
       document.getElementById('summary-table').innerHTML =
         '<span style="color:#888;font-size:0.85rem">No CSV data yet — run at least one patrol.</span>';
       return;
     }
-    const worlds = Object.keys(s.worlds).sort();
-    const rows = worlds.map(w => {
-      const d = s.worlds[w];
-      const wCfg = WORLD_CFG[w] || DEFAULT_WORLD;
+    const tableRows = s.rows.map(d => {
+      const wCfg = WORLD_CFG[d.world] || DEFAULT_WORLD;
       return `<tr>
-        <td><span style="margin-right:0.5rem">${wCfg.icon}</span><strong>${w}</strong></td>
+        <td><span style="margin-right:0.5rem">${wCfg.icon}</span><strong>${d.world}</strong></td>
+        <td><code style="background:#1a1a2e;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.8rem">${d.config}</code></td>
         <td>${d.runs}</td>
-        <td>${d.failed}</td>
         <td>${d.avg_accuracy_m.toFixed(3)} m</td>
         <td>${(d.avg_efficiency * 100).toFixed(0)}%</td>
         <td>${d.avg_recovery_per_goal.toFixed(2)}</td>
@@ -276,10 +274,10 @@ async function loadSummary() {
     document.getElementById('summary-table').innerHTML = `
       <table>
         <thead><tr>
-          <th>World</th><th>Goals Completed</th><th>Goals Failed</th><th>Avg Accuracy</th>
+          <th>World</th><th>Config</th><th>Goals Completed</th><th>Avg Accuracy</th>
           <th>Avg Efficiency</th><th>Avg Recoveries/Goal</th><th>Avg Exec Time</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${tableRows}</tbody>
       </table>`;
   } catch(e) {
     document.getElementById('summary-table').innerHTML =
@@ -431,41 +429,38 @@ class WebDashboardNode(LifecycleNode):
                 return jsonify({'error': 'no data', 'worlds': {}})
 
             completed_rows = []
-            failed_counts = {}
             for f in files:
                 try:
                     fdf = pd.read_csv(f)
                     if 'goals_completed' not in fdf.columns:
                         continue
-                    
-                    world_name = str(fdf['world'].iloc[-1]) if not fdf.empty and 'world' in fdf.columns else 'unknown'
-                    
+                    if 'config' not in fdf.columns:
+                        fdf['config'] = 'default'
                     goal_events = fdf[fdf['goals_completed'].diff().fillna(0) > 0]
                     completed_rows.append(goal_events)
-                    
-                    if 'goals_failed' in fdf.columns:
-                        fails = int(fdf['goals_failed'].max()) if not fdf['goals_failed'].empty else 0
-                        failed_counts[world_name] = failed_counts.get(world_name, 0) + fails
                 except Exception:
                     continue
 
             if not completed_rows:
-                return jsonify({'total_samples': 0, 'worlds': {}})
+                return jsonify({'total_samples': 0, 'rows': []})
 
             df = pd.concat(completed_rows, ignore_index=True)
             if df.empty:
-                return jsonify({'total_samples': 0, 'worlds': {}})
+                return jsonify({'total_samples': 0, 'rows': []})
 
-            summary = {'total_samples': int(len(df)), 'worlds': {}}
-            for world, wdf in df.groupby('world'):
-                summary['worlds'][str(world)] = {
+            rows = []
+            for (world, config), wdf in df.groupby(['world', 'config']):
+                rows.append({
+                    'world':                 str(world),
+                    'config':                str(config),
                     'runs':                  int(len(wdf)),
-                    'failed':                failed_counts.get(str(world), 0),
                     'avg_accuracy_m':        round(float(wdf['nav_accuracy_m'].mean()),   3),
                     'avg_efficiency':        round(float(wdf['path_efficiency'].mean()),   3),
                     'avg_recovery_per_goal': round(float(wdf['recovery_count'].mean()),    2),
                     'avg_execution_time_s':  round(float(wdf['execution_time_s'].mean()),  1),
-                }
+                })
+            rows.sort(key=lambda r: (r['world'], r['config']))
+            summary = {'total_samples': int(len(df)), 'rows': rows}
             node_ref._summary_cache = summary
             node_ref._summary_cache_time = _time.time()
             return jsonify(summary)

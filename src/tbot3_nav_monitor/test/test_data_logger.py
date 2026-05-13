@@ -20,6 +20,7 @@ def _make_node():
     node.get_logger  = MagicMock(return_value=MagicMock())
     node._pub_alerts = MagicMock()
     node._row_count  = 0
+    node._config              = 'default'
     node._alert_battery_sent  = False
     node._alert_accuracy_sent = False
     node._alert_exec_sent     = False
