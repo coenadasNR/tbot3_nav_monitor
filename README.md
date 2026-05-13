@@ -293,8 +293,8 @@ pip install -r requirements.txt
 Then run from the repo root:
 
 ```bash
-# Linux / macOS
-python3 -m pytest src/tbot3_nav_monitor/test/ -v
+# Linux / macOS — PYTHONPATH="" prevents ROS2 system packages leaking into the venv
+PYTHONPATH="" .venv/bin/python -m pytest src/tbot3_nav_monitor/test/ -v
 ```
 
 ```powershell
