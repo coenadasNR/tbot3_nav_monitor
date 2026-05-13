@@ -71,10 +71,15 @@ No ROS2 installation is required on the host. Everything runs inside the contain
 ### Linux
 
 ```bash
-# AMCL demo (uses pre-built map, runs full monitoring stack)
+# Adaptive mode (default) — dynamic Nav2 parameter tuning enabled
 WORLD=obstacles MODE=amcl ./scripts/run_compose.sh
 WORLD=house     MODE=amcl ./scripts/run_compose.sh
 WORLD=narrow    MODE=amcl ./scripts/run_compose.sh
+
+# Baseline mode — fixed parameters, adaptive_behavior node disabled
+WORLD=obstacles MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
+WORLD=house     MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
+WORLD=narrow    MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
 ```
 
 The script auto-detects Linux and mounts the host X11 socket.
@@ -82,7 +87,11 @@ The script auto-detects Linux and mounts the host X11 socket.
 ### macOS
 
 ```bash
+# Adaptive (default)
 WORLD=obstacles MODE=amcl ./scripts/run_compose.sh
+
+# Baseline
+WORLD=obstacles MODE=amcl NAV_CONFIG=baseline ./scripts/run_compose.sh
 ```
 
 The script detects macOS and uses `docker-compose.mac.yml`, which starts an in-container virtual framebuffer (Xvfb), VNC server (x11vnc), and noVNC web proxy.
@@ -94,7 +103,11 @@ Use the Openbox window manager (right-click the desktop for a menu) to move and 
 ### Windows (PowerShell)
 
 ```powershell
+# Adaptive (default)
 $env:WORLD = "obstacles"; $env:MODE = "amcl"; .\scripts\run_windows.ps1
+
+# Baseline
+$env:WORLD = "obstacles"; $env:MODE = "amcl"; $env:NAV_CONFIG = "baseline"; .\scripts\run_windows.ps1
 ```
 
 ### Open the dashboard
