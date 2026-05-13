@@ -24,27 +24,46 @@ from std_msgs.msg import String
 # (x, y, yaw_degrees) — positions chosen to be in clear navigable space per world
 _WAYPOINTS: dict = {
     'obstacles': [
-        ( 1.5,  2.0, 225),   # NE
-        ( 0.5, -1.0,  45),   # SW
-        ( 1.5, -1.0, 135),   # SE
-        ( 0.5,  2.0, 315),   # NW
-        ( 2.0,  1.0,   0),   # Off-center North
-        ( 2.0,  0.0, 180),   # Off-center South
+        # ── outward (SW → NE, threading between cylinder grid) ─────────────
+        ( 2.0, -1.5,  90),   # W1  SE outer
+        (-0.5, -1.5,  90),   # W2  SW outer
+        (-0.5,  0.0,   0),   # W3  W side
+        ( 2.0,  0.0, 180),   # W4  E side
+        (-0.5,  1.5,   0),   # W5  NW side
+        ( 2.0,  1.5, 180),   # W6  NE (turnaround)
+        # ── return (NE → SW, reverse order) ────────────────────────────────
+        (-0.5,  1.5,   0),   # W7  NW side
+        ( 2.0,  0.0, 180),   # W8  E side
+        (-0.5,  0.0,   0),   # W9  W side
+        ( 2.0, -1.5,  90),   # W10 SE (loops to W1)
     ],
     'house': [
-        (-4.0,  1.8,   0),   # left room
-        (-2.5, -0.7,   0),   # left room lower
-        ( 0.5,  1.8, 180),   # central hallway
-        ( 6.5,  1.8, 180),   # right room upper
-        ( 6.5, -0.7, 180),   # right room lower
+        # ── outward (left → right) ──────────────────────────────────────────
+        (-4.0,  1.8,   0),   # W1  left room upper
+        (-4.0, -0.7,   0),   # W2  left room lower  ← only outside waypoint
+        (-2.5,  1.0,   0),   # W3  left hallway
+        ( 0.5,  1.8, 180),   # W4  central upper
+        ( 4.0,  1.8, 180),   # W5  right corridor
+        ( 6.5,  1.8, 180),   # W6  right room upper (turnaround)
+        # ── return (right → left) ───────────────────────────────────────────
+        ( 6.5, -0.7, 180),   # W7  right room lower (inside right room)
+        ( 4.0,  0.3,   0),   # W8  right corridor lower
+        ( 0.5,  0.3,   0),   # W9  central lower
+        (-2.5,  0.3,   0),   # W10 left hallway lower (loops to W1)
     ],
     'narrow': [
-        ( 1.5, -4.0,   0),   # C1 east end
-        (-1.5, -2.2,   0),   # C3 west end  (robot traverses narrow C2 to reach here)
-        ( 1.5, -2.2, 180),   # C3 east end
-        (-1.5, -0.8,   0),   # C5 west end  (robot traverses narrow C4 to reach here)
-        ( 1.5, -0.8, 180),   # C5 east end
-        (-1.5, -4.0,   0),   # C1 west end  (return through all corridors)
+        # ── outward (bottom → top) ──────────────────────────────────────────
+        ( 1.5, -4.0,   0),   # W1  C1 east
+        (-1.5, -4.0, 180),   # W2  C1 west
+        ( 1.5, -2.2, 180),   # W3  C3 east  (alternated vs west-first)
+        (-1.5, -2.2,   0),   # W4  C3 west
+        (-1.5, -0.8,   0),   # W5  C5 west
+        ( 1.5, -0.8, 180),   # W6  C5 east  (turnaround)
+        # ── return (top → bottom, reverse order) ───────────────────────────
+        (-1.5, -0.8,   0),   # W7  C5 west
+        (-1.5, -2.2,   0),   # W8  C3 west
+        ( 1.5, -2.2, 180),   # W9  C3 east
+        (-1.5, -4.0, 180),   # W10 C1 west  (loops back to W1)
     ],
 }
 
@@ -66,6 +85,8 @@ class WaypointPatrolNode(Node):
 
         self.declare_parameter('world', 'obstacles')
         self.declare_parameter('loop_delay_sec', 2.0)
+        self.declare_parameter('max_retries', 2)       # retries before skipping a waypoint
+        self.declare_parameter('retry_delay_sec', 3.0) # pause before each retry
 
         world = self.get_parameter('world').value
         key = 'narrow' if 'narrow' in world else world
@@ -79,6 +100,9 @@ class WaypointPatrolNode(Node):
         self._awaiting_manual: bool = False  # patrol paused until manual goal finishes
         self._manual_start_time: float = 0.0
         self._MANUAL_TIMEOUT_SEC: float = 120.0  # resume patrol if manual goal never clears
+
+        # Retry state — reset on success or manual interruption, incremented on abort
+        self._retry_count: int = 0
 
         self._goal_pub = self.create_publisher(PoseStamped, '/nav_monitor/target_pose', 10)
         self._preempted_pub = self.create_publisher(String, '/nav_monitor/preempted_goal_id', 10)
@@ -161,17 +185,35 @@ class WaypointPatrolNode(Node):
 
         if result and result.status == GoalStatus.STATUS_SUCCEEDED:
             self.get_logger().info(f'Reached ({x:.1f}, {y:.1f})')
+            self._retry_count = 0
             self._advance()
         elif self._awaiting_manual:
             # Patrol goal was preempted by a manual RViz2 goal — don't advance yet.
             # _on_action_status will call _advance() once the manual goal finishes.
+            # Reset retry counter: the interruption is intentional, not a failure.
             self.get_logger().info(
                 f'Patrol paused at waypoint {self._idx + 1} — waiting for manual goal'
             )
+            self._retry_count = 0
             self._goal_active = False
         else:
-            self.get_logger().warn(f'Goal ({x:.1f}, {y:.1f}) ended with status {status}')
-            self._advance()
+            max_retries = self.get_parameter('max_retries').value
+            retry_delay = self.get_parameter('retry_delay_sec').value
+            if self._retry_count < max_retries:
+                self._retry_count += 1
+                self.get_logger().warn(
+                    f'Goal ({x:.1f}, {y:.1f}) failed (status {status}) — '
+                    f'retry {self._retry_count}/{max_retries}'
+                )
+                # Stay on the same waypoint; short pause before retrying
+                self._goal_active = False
+                self._next_send = time.monotonic() + retry_delay
+            else:
+                self.get_logger().warn(
+                    f'Goal ({x:.1f}, {y:.1f}) failed after {max_retries} retries — skipping'
+                )
+                self._retry_count = 0
+                self._advance()
 
     def _advance(self) -> None:
         self._idx = (self._idx + 1) % len(self._waypoints)
@@ -191,11 +233,11 @@ class WaypointPatrolNode(Node):
 
     def _on_action_status(self, msg: GoalStatusArray) -> None:
         """Track the Nav2 action status to detect when the manual goal finishes."""
-        if not self._awaiting_manual:
-            return
-
         active_statuses = {GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING}
         has_active = any(s.status in active_statuses for s in msg.status_list)
+
+        if not self._awaiting_manual:
+            return
 
         if self._manual_pending:
             if has_active:
@@ -207,6 +249,7 @@ class WaypointPatrolNode(Node):
         if not has_active:
             self.get_logger().info('Manual goal finished — resuming patrol')
             self._awaiting_manual = False
+            self._retry_count = 0
             self._advance()
 
 
