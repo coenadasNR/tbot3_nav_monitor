@@ -152,13 +152,13 @@ Three Gazebo worlds exercise progressively harder navigation challenges, each ru
 
 Rule 3 occasionally misfires in this environment. The house corridors are wide enough that efficiency rarely drops below the 0.40 trigger threshold, but when crossing between rooms the instantaneous rolling window briefly dips, causing Rule 3 to raise `cost_scaling_factor` and reduce velocity. The planner responds by routing further from walls than necessary, and the reduced velocity means the robot covers that longer path more slowly. Because the house has no tight passages where this conservatism is warranted, the overhead has no benefit. This world illustrates the cost of over-tuning: the adaptive system can impose a measurable penalty in environments where the default parameters were already sufficient.
 
-**Narrow world.** The narrow world is the most challenging: sub-1 m baffle passages with two dynamic obstacles oscillating through the corridors at 0.1 m/s.
+**Narrow world** The narrow world is the most challenging: sub-1 m baffle passages with two dynamic obstacles oscillating through the corridors at 0.1 m/s.
 
 The 3 goal failures (80% success rate) are planning failures rather than execution failures. When a dynamic obstacle repositions mid-plan, it inflates a region of the already-tight costmap. With the adaptive system's elevated `cost_scaling_factor` active from Rule 3 (which fires due to the naturally low efficiency of corridor navigation), the global planner occasionally determines no feasible path exists through the passage and aborts. The retry logic (up to 2 retries with 3 s delay) catches some of these, but the 3 remaining failures occur when the obstacle does not move enough between attempts.
 
 On the goals it does complete, the adaptive system improves path efficiency (0.66). Rule 1 fires frequently, with an average of 4.56 recoveries per goal, reducing velocity to keep the robot from charging into narrow passages at full speed. Rule 3 pushes paths toward corridor centres when efficiency drops, producing less erratic paths on goals where no planning failure occurs. The narrow world exposes the fundamental tension in adaptive tuning: the same `cost_scaling_factor` increase that improves path quality in open environments tightens the feasibility margin in already-constrained passages.
 
-**Cross-world summary.**
+**Cross-world summary**
 
 Path efficiency decreases with environment complexity. Obstacles achieves the highest efficiency (0.91) because passages between cylinders allow near-straight-line inter-waypoint paths. House drops to 0.69 because room geometry forces mandatory detours regardless of planner settings. Narrow falls to 0.66 because the baffles require lateral traversal before reaching the next corridor, and dynamic obstacles introduce mid-plan deviations.
 
@@ -310,22 +310,32 @@ tbot3_nav_monitor/
 ├── docker-compose.yml          # cross-platform: bridge net + ipc:host for DDS
 ├── docker-compose.linux.yml    # Linux X11 socket overlay
 ├── docker-compose.mac.yml      # macOS VNC overlay (Xvfb + x11vnc + noVNC)
+├── requirements.txt            # host-side dependencies (analyse.py + pytest)
+├── assets/
+│   ├── architecture.svg        # system architecture diagram
+│   └── demo.mp4                # demo video
 ├── scripts/
 │   ├── run_compose.sh          # Linux/macOS launcher (OS-detect)
 │   ├── run_windows.ps1         # Windows PowerShell launcher (auto-starts VcXsrv)
 │   ├── start_vnc.sh            # macOS: starts Xvfb + x11vnc + noVNC inside container
 │   ├── save_map.sh             # SLAM map serialisation
+│   ├── analyse.py              # offline CSV analysis and plot generation
 │   └── ros_entrypoint.sh       # container entrypoint
 ├── src/tbot3_nav_monitor/
 │   ├── package.xml
 │   ├── setup.py
+│   ├── setup.cfg
 │   ├── launch/                 # 4 launch files (per-world sim × 3 + monitor)
 │   ├── config/                 # nav2_params*.yaml + nav_monitor.rviz
+│   ├── resource/               # ament resource index marker
 │   ├── tbot3_nav_monitor/      # 6 nodes (5 core + dynamic_obstacles for narrow world)
 │   └── test/                   # 68 unit tests + conftest.py
-├── worlds/                     # narrow_passages.world (custom)
-├── maps/                       # saved AMCL maps for all three worlds
-├── data/csv/                   # runtime-generated metric logs
+├── worlds/
+│   └── narrow_passages.world   # custom narrow corridor world
+├── maps/                       # saved AMCL maps for all three worlds (pgm + yaml)
+├── data/
+│   ├── csv/                    # runtime-generated metric logs
+│   └── plots/                  # generated analysis plots (per world)
 └── README.md
 ```
 
