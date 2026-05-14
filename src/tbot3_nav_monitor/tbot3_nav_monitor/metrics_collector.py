@@ -395,6 +395,8 @@ class MetricsCollectorNode(LifecycleNode):
 
         self._pub_exec_time.publish(Float64(data=float(self._last_exec_time)))
         self._pub_accuracy.publish(Float64(data=float(self._last_accuracy_m)))
+        # Guard: don't broadcast the default 0.0 before a real efficiency value has been
+        # computed. _has_efficiency is set in _feedback_callback once path_length > 0.
         if self._has_efficiency:
             self._pub_efficiency.publish(Float64(data=float(self._last_efficiency)))
         self._pub_battery.publish(Float64(data=float(self._battery_pct)))

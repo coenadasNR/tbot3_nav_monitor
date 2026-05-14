@@ -391,6 +391,10 @@ class WebDashboardNode(LifecycleNode):
     # ── Flask server ───────────────────────────────────────────────────────
 
     def _start_flask(self) -> None:
+        # werkzeug.serving.make_server is used instead of app.run() so we hold a reference
+        # to the server object and can call shutdown() cleanly from _stop_flask().
+        # The thread is marked daemon=True so it does not prevent Python from exiting if
+        # the ROS2 spin loop ends unexpectedly without triggering on_deactivate.
         if self._http_server is not None:
             return
 

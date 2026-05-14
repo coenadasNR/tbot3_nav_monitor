@@ -39,6 +39,8 @@ FIG_DPI = 150
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def load_data(data_dir: Path) -> pd.DataFrame:
+    """Glob all nav_metrics_*.csv files in data_dir, concatenate them, and sort by timestamp.
+    Skips any file that lacks a 'config' column (e.g. hand-edited or legacy files)."""
     files = sorted(data_dir.glob('nav_metrics_*.csv'))
     if not files:
         sys.exit(f'No nav_metrics_*.csv files found in {data_dir}')
@@ -71,6 +73,7 @@ def completed_goal_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def save(fig: plt.Figure, path: Path) -> None:
+    """Save figure to path at FIG_DPI and close it to release memory."""
     fig.savefig(path, dpi=FIG_DPI, bbox_inches='tight')
     plt.close(fig)
     print(f'  saved {path}')
@@ -79,6 +82,7 @@ def save(fig: plt.Figure, path: Path) -> None:
 # ── plots ─────────────────────────────────────────────────────────────────────
 
 def _world_label(df: pd.DataFrame) -> str:
+    """Human-readable world name(s) for plot titles, derived from the data."""
     worlds = df['world'].unique()
     return ' + '.join(sorted(str(w).title() for w in worlds))
 
@@ -249,6 +253,7 @@ def plot_goal_outcomes(df: pd.DataFrame, out_dir: Path) -> None:
 
 
 def print_summary_table(df: pd.DataFrame) -> None:
+    """Print an aligned summary table of aggregate metrics to stdout, one column per config."""
     configs = sorted(df['config'].unique(), key=lambda c: (c != 'adaptive', c))
     
     # Calculate row width: 32 chars for label + 14 chars per config
