@@ -146,13 +146,19 @@ Three Gazebo worlds exercise progressively harder navigation challenges, each ru
 
 ### Analysis
 
-**Obstacles world.** The obstacles world is an open arena with a 3×3 grid of static cylinders. No recovery behaviours were triggered, making this the cleanest test of path planning quality. Rule 3 is the primary effect here: the raised `cost_scaling_factor` (3.0 → 5.0) steepens the inflation gradient around each cylinder, biasing the global planner toward paths that pass through the widest gaps rather than grazing cylinder edges. This produces high path efficiency (0.91) with clean arcs between cylinders. The total distance (30.77 m) and battery drain (98.5%) confirm the robot is navigating directly without unnecessary detours. This world represents the ideal operating regime for the adaptive system: structured obstacles with clear inter-obstacle corridors where planning choices are consequential.
+**Obstacles world** 
 
-**House world.** The house world is a multi-room domestic layout with door frames, internal walls, and long cross-room traversals. All 12 goals completed with zero recoveries. Path efficiency is 0.69, where detours are geometrically forced by the room layout and cannot be reduced by tuning the inflation gradient.
+The obstacles world is an open arena with a 3×3 grid of static cylinders. No recovery behaviours were triggered, making this the cleanest test of path planning quality. Rule 3 is the primary effect here: the raised `cost_scaling_factor` (3.0 → 5.0) steepens the inflation gradient around each cylinder, biasing the global planner toward paths that pass through the widest gaps rather than grazing cylinder edges. This produces high path efficiency (0.91) with clean arcs between cylinders. The total distance (30.77 m) and battery drain (98.5%) confirm the robot is navigating directly without unnecessary detours. This world represents the ideal operating regime for the adaptive system: structured obstacles with clear inter-obstacle corridors where planning choices are consequential.
+
+**House world** 
+
+The house world is a multi-room domestic layout with door frames, internal walls, and long cross-room traversals. All 12 goals completed with zero recoveries. Path efficiency is 0.69, where detours are geometrically forced by the room layout and cannot be reduced by tuning the inflation gradient.
 
 Rule 3 occasionally misfires in this environment. The house corridors are wide enough that efficiency rarely drops below the 0.40 trigger threshold, but when crossing between rooms the instantaneous rolling window briefly dips, causing Rule 3 to raise `cost_scaling_factor` and reduce velocity. The planner responds by routing further from walls than necessary, and the reduced velocity means the robot covers that longer path more slowly. Because the house has no tight passages where this conservatism is warranted, the overhead has no benefit. This world illustrates the cost of over-tuning: the adaptive system can impose a measurable penalty in environments where the default parameters were already sufficient.
 
-**Narrow world** The narrow world is the most challenging: sub-1 m baffle passages with two dynamic obstacles oscillating through the corridors at 0.1 m/s.
+**Narrow world** 
+
+The narrow world is the most challenging: sub-1 m baffle passages with two dynamic obstacles oscillating through the corridors at 0.1 m/s.
 
 The 3 goal failures (80% success rate) are planning failures rather than execution failures. When a dynamic obstacle repositions mid-plan, it inflates a region of the already-tight costmap. With the adaptive system's elevated `cost_scaling_factor` active from Rule 3 (which fires due to the naturally low efficiency of corridor navigation), the global planner occasionally determines no feasible path exists through the passage and aborts. The retry logic (up to 2 retries with 3 s delay) catches some of these, but the 3 remaining failures occur when the obstacle does not move enough between attempts.
 
