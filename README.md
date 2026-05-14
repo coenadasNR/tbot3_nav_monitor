@@ -4,7 +4,6 @@ Real-time navigation performance monitor and adaptive behavior controller for **
 
 The package observes a Nav2 navigation stack from the side, computes performance metrics live, dynamically reconfigures Nav2 parameters when navigation degrades, logs every metric tick to CSV, and exposes a web dashboard outside the container.
 
-> **Submission for the AI4I (Italian Institute of Artificial Intelligence) PhD application.**
 
 [![Demo video](https://img.shields.io/badge/Demo-Watch%20video-blue?style=for-the-badge&logo=github)](https://github.com/coenadasNR/tbot3_nav_monitor/raw/main/assets/demo.mp4)
 
@@ -14,7 +13,7 @@ The package observes a Nav2 navigation stack from the side, computes performance
 
 ![Architecture diagram](assets/architecture.svg)
 
-Five Python nodes, three of them lifecycle nodes:
+Six Python nodes, three of them lifecycle nodes:
 
 | Node | Type | Purpose |
 |---|---|---|
@@ -23,6 +22,7 @@ Five Python nodes, three of them lifecycle nodes:
 | `data_logger` | Node | Writes timestamped CSV rows; publishes alerts when configurable thresholds are breached |
 | `web_dashboard` | LifecycleNode | Flask server on port 8080: live metric cards, Chart.js trend lines, multi-environment summary table from CSV history |
 | `waypoint_patrol` | Node | Cycles per-world waypoints via `NavigateToPose`; pauses for manual `/goal_pose` from RViz2 and resumes after completion |
+| `dynamic_obstacles` | Node | Spawns and moves dynamic obstacles in the narrow world; not used in other worlds |
 
 All inter-node communication uses ROS2 topics (`/nav_monitor/*`). The monitor subsystem never blocks Nav2 — it consumes published state, never preempts it.
 
@@ -162,8 +162,8 @@ Two optional variables control how a run is labelled and whether the adaptive no
 
 | Variable | What it does | Default |
 |---|---|---|
-| `NAV_CONFIG` | Free-form label written into the CSV filename and dashboard row — use it to name the run | `adaptive` |
-| `NAV_ADAPTIVE` | Set to `false` to disable the `adaptive_behavior` node. Omit to keep it enabled | enabled |
+| `NAV_CONFIG` | Free-form label written into the CSV filename and dashboard row — use it to name the run | `adaptive` (or `baseline` if `NAV_ADAPTIVE=false`) |
+| `NAV_ADAPTIVE` | Set to `false` to disable the `adaptive_behavior` node. Omit to keep it enabled | `true` |
 
 **Linux / macOS**
 ```bash
@@ -282,7 +282,7 @@ python -m pytest src/tbot3_nav_monitor/test/ -v
 - **`test_adaptive_behavior.py`** (22) — all three rules in isolation and combined, restoration paths, threshold oscillation, partial/empty windows, ping-pong regression
 - **`test_metrics_collector.py`** (29) — `compute_accuracy` / `compute_efficiency` purity, None-pose handling, zero-distance edge case, UUID-based preemption classification, ABORTED vs CANCELED branching
 - **`test_data_logger.py`** (11) — CSV writing, malformed JSON handling, all four alert thresholds at boundary conditions, alert deduplication (fires once, clears on recovery, re-fires on re-trigger)
-- **`test_web_dashboard.py`** (6) — Flask endpoint stubs, alert log thread-safety, `/api/metrics` and `/api/alerts` response shape
+- **`test_web_dashboard.py`** (6) — lifecycle resource management: deactivate stops Flask, cleanup destroys subscriptions, `_stop_flask` shuts down server and clears refs, no-op when server not running, no-op start when already running, Flask thread startup
 
 ---
 
@@ -303,9 +303,9 @@ tbot3_nav_monitor/
 ├── src/tbot3_nav_monitor/
 │   ├── package.xml
 │   ├── setup.py
-│   ├── launch/                 # 5 launch files (per-world sim + monitor + full_stack)
+│   ├── launch/                 # 4 launch files (per-world sim × 3 + monitor)
 │   ├── config/                 # nav2_params*.yaml + nav_monitor.rviz
-│   ├── tbot3_nav_monitor/      # 5 nodes
+│   ├── tbot3_nav_monitor/      # 6 nodes (5 core + dynamic_obstacles for narrow world)
 │   └── test/                   # 68 unit tests + conftest.py
 ├── worlds/                     # narrow_passages.world (custom)
 ├── maps/                       # saved AMCL maps for all three worlds
