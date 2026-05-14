@@ -127,7 +127,7 @@ Three Gazebo worlds exercise progressively harder navigation challenges, each ru
 
 | World | Description | Challenge | Source |
 |---|---|---|---|
-| `obstacles` | Open arena with a 3×3 cylinder grid | Dynamic replanning around moving obstacles | `turtlebot3_world.world` |
+| `obstacles` | Open arena with a 3×3 cylinder grid | Replanning around static cylinder obstacles | `turtlebot3_world.world` |
 | `house`     | Multi-room domestic environment | Door frames, corridors, long cross-room legs | `turtlebot3_house.world` |
 | `narrow`    | Custom corridors with sub-1 m passages + 2 dynamic obstacles | Tight clearance, frequent recovery, replanning | `worlds/narrow_passages.world` |
 
