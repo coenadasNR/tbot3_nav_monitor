@@ -146,11 +146,27 @@ Three Gazebo worlds exercise progressively harder navigation challenges, each ru
 
 ### Analysis
 
-**Obstacles world.** Open space with a 3×3 cylinder grid. Zero recoveries, 100% success rate, and the highest path efficiency (0.91). The raised `cost_scaling_factor` steers the planner toward corridor centres between cylinders, producing clean arcs with minimal redundant steering.
+**Obstacles world.** The obstacles world is an open arena with a 3×3 grid of static cylinders. No recovery behaviours were triggered, making this the cleanest test of path planning quality. Rule 3 is the primary effect here: the raised `cost_scaling_factor` (3.0 → 5.0) steepens the inflation gradient around each cylinder, biasing the global planner toward paths that pass through the widest gaps rather than grazing cylinder edges. This produces high path efficiency (0.91) with clean arcs between cylinders. The total distance (30.77 m) and battery drain (98.5%) confirm the robot is navigating directly without unnecessary detours. This world represents the ideal operating regime for the adaptive system: structured obstacles with clear inter-obstacle corridors where planning choices are consequential.
 
-**House world.** Multi-room domestic layout with door frames and long cross-room legs. All 12 goals completed with zero recoveries. Efficiency of 0.69 reflects the geometrically forced detours through corridors; the adaptive system correctly holds parameters at their defaults (Rule 3 never fires) since efficiency stays above the 0.40 threshold.
+**House world.** The house world is a multi-room domestic layout with door frames, internal walls, and long cross-room traversals. All 12 goals completed with zero recoveries. Path efficiency is 0.69, where detours are geometrically forced by the room layout and cannot be reduced by tuning the inflation gradient.
 
-**Narrow world.** The hardest environment: sub-1 m baffle passages with two dynamic obstacles oscillating through the corridors. The system logged 4.56 recoveries per goal on average and completed 12 goals with 3 failures (80% success rate). Failures occur when dynamic obstacle movement shifts the local costmap mid-plan, causing the global planner to find no feasible path through the tightest sections. The retry logic (up to 2 retries with 3 s delay) reduces but does not eliminate these aborts.
+Rule 3 occasionally misfires in this environment. The house corridors are wide enough that efficiency rarely drops below the 0.40 trigger threshold, but when crossing between rooms the instantaneous rolling window briefly dips, causing Rule 3 to raise `cost_scaling_factor` and reduce velocity. The planner responds by routing further from walls than necessary, and the reduced velocity means the robot covers that longer path more slowly. Because the house has no tight passages where this conservatism is warranted, the overhead has no benefit. This world illustrates the cost of over-tuning: the adaptive system can impose a measurable penalty in environments where the default parameters were already sufficient.
+
+**Narrow world.** The narrow world is the most challenging: sub-1 m baffle passages with two dynamic obstacles oscillating through the corridors at 0.1 m/s.
+
+The 3 goal failures (80% success rate) are planning failures rather than execution failures. When a dynamic obstacle repositions mid-plan, it inflates a region of the already-tight costmap. With the adaptive system's elevated `cost_scaling_factor` active from Rule 3 (which fires due to the naturally low efficiency of corridor navigation), the global planner occasionally determines no feasible path exists through the passage and aborts. The retry logic (up to 2 retries with 3 s delay) catches some of these, but the 3 remaining failures occur when the obstacle does not move enough between attempts.
+
+On the goals it does complete, the adaptive system improves path efficiency (0.66). Rule 1 fires frequently, with an average of 4.56 recoveries per goal, reducing velocity to keep the robot from charging into narrow passages at full speed. Rule 3 pushes paths toward corridor centres when efficiency drops, producing less erratic paths on goals where no planning failure occurs. The narrow world exposes the fundamental tension in adaptive tuning: the same `cost_scaling_factor` increase that improves path quality in open environments tightens the feasibility margin in already-constrained passages.
+
+**Cross-world summary.**
+
+Path efficiency decreases with environment complexity. Obstacles achieves the highest efficiency (0.91) because passages between cylinders allow near-straight-line inter-waypoint paths. House drops to 0.69 because room geometry forces mandatory detours regardless of planner settings. Narrow falls to 0.66 because the baffles require lateral traversal before reaching the next corridor, and dynamic obstacles introduce mid-plan deviations.
+
+Execution time scales with distance and difficulty, not linearly. The house has the longest execution time (31.28 s per goal) despite a moderate world size, because the long cross-room legs combined with Rule 3's velocity reduction extend each goal significantly. Narrow's execution time (20.82 s) is lower even though the world is harder, because waypoints are closer together and recoveries, while frequent, are short-duration spin and back-up manoeuvres.
+
+Battery consumption reflects total distance. Obstacles consumes the least battery (1.5% over 12 goals, 30.77 m). Narrow sits in the middle (2.4%, 47.14 m). House consumes the most (3.9%, 77.64 m), consistent with its much longer patrol legs spanning the full width of the building.
+
+Recovery behaviour is environment-specific. Obstacles and house produce zero recoveries because neither world presents tight-clearance situations that cause the robot to get stuck. Narrow's average of 4.56 recoveries per goal demonstrates that the narrow passages consistently exercise the recovery stack, validating that the world is a genuine stress test for the monitoring and adaptation system.
 
 ---
 
