@@ -24,7 +24,7 @@ Six Python nodes, three of them lifecycle nodes:
 | `waypoint_patrol` | Node | Cycles per-world waypoints via `NavigateToPose`; pauses for manual `/goal_pose` from RViz2 and resumes after completion |
 | `dynamic_obstacles` | Node | Spawns and moves dynamic obstacles in the narrow world; not used in other worlds |
 
-All inter-node communication uses ROS2 topics (`/nav_monitor/*`). The monitor subsystem never blocks Nav2 — it consumes published state, never preempts it.
+All inter-node communication uses ROS2 topics (`/nav_monitor/*`). The monitor subsystem never blocks Nav2. It consumes published state and never preempts it.
 
 ---
 
@@ -34,8 +34,8 @@ All inter-node communication uses ROS2 topics (`/nav_monitor/*`). The monitor su
 |---|---|
 | **All** | Docker Desktop (or Docker Engine + Compose v2) |
 | **Linux** | Native X11 (already present); the Linux-specific compose override mounts `/tmp/.X11-unix` |
-| **macOS** | Nothing — Gazebo/RViz2 run inside a VNC container, open `http://localhost:6080` in any browser |
-| **Windows** | [VcXsrv](https://sourceforge.net/projects/vcxsrv/) — install it and `run_windows.ps1` will start it automatically with the correct flags |
+| **macOS** | No host software is needed. Gazebo and RViz2 run inside a VNC container; open `http://localhost:6080` in any browser |
+| **Windows** | [VcXsrv](https://sourceforge.net/projects/vcxsrv/). Install it and `run_windows.ps1` will start it automatically with the correct flags |
 
 No ROS2 installation is required on the host. Everything runs inside the container; the dashboard is reachable from the host browser.
 
@@ -75,7 +75,7 @@ $env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1
 
 Once Nav2 reports ready (~30 s after launch):
 
-**[http://localhost:8080](http://localhost:8080)** — metrics dashboard (all platforms)
+**[http://localhost:8080](http://localhost:8080)** is the metrics dashboard (all platforms).
 
 The patrol begins automatically and goals start appearing on the dashboard.
 
@@ -111,13 +111,13 @@ Three independent rules, each with hysteresis to prevent oscillation. Rolling wi
 
 | Rule | Trigger | Action | Restore |
 |---|---|---|---|
-| **1 — Slow down** | avg recovery ≥ 3 | `desired_linear_vel: 0.20 → 0.10`, `rotate_to_heading_angular_vel: 1.8 → 0.9` | avg recovery < 1.5 **and** efficiency healthy |
-| **2 — Relax tolerance** | avg accuracy > 0.40 m | `xy_goal_tolerance: 0.15 → 0.35` | avg accuracy < 0.20 m |
-| **3 — Conservative mode** | avg efficiency < 0.40 | `cost_scaling_factor: 3.0 → 5.0` (steeper inflation gradient → planner prefers corridor centres), velocity reduced as in Rule 1 | avg efficiency > 0.85 |
+| **1: Slow down** | avg recovery ≥ 3 | `desired_linear_vel: 0.20 → 0.10`, `rotate_to_heading_angular_vel: 1.8 → 0.9` | avg recovery < 1.5 **and** efficiency healthy |
+| **2: Relax tolerance** | avg accuracy > 0.40 m | `xy_goal_tolerance: 0.15 → 0.35` | avg accuracy < 0.20 m |
+| **3: Conservative mode** | avg efficiency < 0.40 | `cost_scaling_factor: 3.0 → 5.0` (steeper inflation gradient → planner prefers corridor centres), velocity reduced as in Rule 1 | avg efficiency > 0.85 |
 
-Rule 1's restore is gated on Rule 3 — if efficiency is still poor, the velocity reduction is held even when recoveries normalise. This prevents the two rules from ping-ponging each tick.
+Rule 1's restore is gated on Rule 3. If efficiency is still poor, the velocity reduction is held even when recoveries normalise. This prevents the two rules from ping-ponging each tick.
 
-Reconfiguration uses the standard ROS2 `SetParameters` service against `/controller_server` and `/local_costmap/local_costmap` — Nav2 applies the new values without restart.
+Reconfiguration uses the standard ROS2 `SetParameters` service against `/controller_server` and `/local_costmap/local_costmap`. Nav2 applies the new values without restart.
 
 ---
 
@@ -146,7 +146,7 @@ Three Gazebo worlds exercise progressively harder navigation challenges, each ru
 
 ### Analysis
 
-**Obstacles world.** Open space with a 3×3 cylinder grid. Zero recoveries, 100% success rate, and the highest path efficiency (0.91) — the raised `cost_scaling_factor` steers the planner toward corridor centres between cylinders, producing clean arcs with minimal redundant steering.
+**Obstacles world.** Open space with a 3×3 cylinder grid. Zero recoveries, 100% success rate, and the highest path efficiency (0.91). The raised `cost_scaling_factor` steers the planner toward corridor centres between cylinders, producing clean arcs with minimal redundant steering.
 
 **House world.** Multi-room domestic layout with door frames and long cross-room legs. All 12 goals completed with zero recoveries. Efficiency of 0.69 reflects the geometrically forced detours through corridors; the adaptive system correctly holds parameters at their defaults (Rule 3 never fires) since efficiency stays above the 0.40 threshold.
 
@@ -162,12 +162,12 @@ Two optional variables control how a run is labelled and whether the adaptive no
 
 | Variable | What it does | Default |
 |---|---|---|
-| `NAV_CONFIG` | Free-form label written into the CSV filename and dashboard row — use it to name the run | `adaptive` (or `baseline` if `NAV_ADAPTIVE=false`) |
+| `NAV_CONFIG` | Free-form label written into the CSV filename and dashboard row. Use it to name the run. | `adaptive` (or `baseline` if `NAV_ADAPTIVE=false`) |
 | `NAV_ADAPTIVE` | Set to `false` to disable the `adaptive_behavior` node. Omit to keep it enabled | `true` |
 
 **Linux / macOS**
 ```bash
-# Adaptive (default) — NAV_ADAPTIVE omitted, defaults to enabled
+# Adaptive (default): NAV_ADAPTIVE omitted, defaults to enabled
 WORLD=house MODE=amcl ./scripts/run_compose.sh
 
 # Adaptive OFF
@@ -177,7 +177,7 @@ WORLD=house MODE=amcl NAV_ADAPTIVE=false ./scripts/run_compose.sh
 WORLD=house MODE=amcl NAV_CONFIG=my_config NAV_ADAPTIVE=false ./scripts/run_compose.sh
 ```
 
-**Windows (PowerShell)** — pass as script parameters, not env vars:
+**Windows (PowerShell)**: pass as script parameters, not env vars:
 ```powershell
 # Adaptive OFF
 $env:WORLD="house"; $env:MODE="amcl"; .\scripts\run_windows.ps1 -NavAdaptive false
@@ -226,12 +226,12 @@ They include summary bars, efficiency over time, recovery over time, execution t
 
 Accessible at `http://localhost:8080` (port mapped from container).
 
-- **World banner** — large per-world identifier with colour-coded accent
-- **Goal status strip** — IDLE / ACTIVE (pulsing) / SUCCEEDED / FAILED + running counts
-- **Live metric cards** — execution time, accuracy, efficiency, recovery count, battery, total distance, with amber/red threshold colouring
-- **Trend charts** — last 60 s of accuracy, efficiency, recovery (Chart.js, client-side rolling buffer)
-- **Multi-environment summary** — table populated from `/api/summary`, refreshes every 30 s, served from a 25 s pandas cache
-- **Recent alerts** — last 10 alerts; timestamps formatted in the browser's local timezone
+- **World banner**: large per-world identifier with colour-coded accent
+- **Goal status strip**: shows IDLE, ACTIVE (pulsing), SUCCEEDED, or FAILED status with running counts
+- **Live metric cards**: execution time, accuracy, efficiency, recovery count, battery, and total distance, with amber/red threshold colouring
+- **Trend charts**: last 60 s of accuracy, efficiency, and recovery (Chart.js, client-side rolling buffer)
+- **Multi-environment summary**: table populated from `/api/summary`, refreshes every 30 s, served from a 25 s pandas cache
+- **Recent alerts**: last 10 alerts with timestamps formatted in the browser's local timezone
 
 Three JSON endpoints: `/api/metrics`, `/api/alerts`, `/api/summary`.
 
@@ -249,7 +249,7 @@ Send a `/goal_pose` from RViz2 ("2D Goal Pose" tool) at any time. The patrol pau
 
 ## 10. Testing
 
-Tests run on the host (no container needed) — `conftest.py` stubs all ROS2 packages.
+Tests run on the host with no container needed. `conftest.py` stubs all ROS2 packages.
 
 Install dependencies first if you haven't already:
 
@@ -268,7 +268,7 @@ pip install -r requirements.txt
 Then run from the repo root:
 
 ```bash
-# Linux / macOS — PYTHONPATH="" prevents ROS2 system packages leaking into the venv
+# Linux / macOS (PYTHONPATH="" prevents ROS2 system packages leaking into the venv)
 PYTHONPATH="" .venv/bin/python -m pytest src/tbot3_nav_monitor/test/ -v
 ```
 
@@ -277,12 +277,12 @@ PYTHONPATH="" .venv/bin/python -m pytest src/tbot3_nav_monitor/test/ -v
 python -m pytest src/tbot3_nav_monitor/test/ -v
 ```
 
-68 unit tests (no live ROS2 required — `conftest.py` provides class stubs):
+68 unit tests (no live ROS2 required; `conftest.py` provides class stubs):
 
-- **`test_adaptive_behavior.py`** (22) — all three rules in isolation and combined, restoration paths, threshold oscillation, partial/empty windows, ping-pong regression
-- **`test_metrics_collector.py`** (29) — `compute_accuracy` / `compute_efficiency` purity, None-pose handling, zero-distance edge case, UUID-based preemption classification, ABORTED vs CANCELED branching
-- **`test_data_logger.py`** (11) — CSV writing, malformed JSON handling, all four alert thresholds at boundary conditions, alert deduplication (fires once, clears on recovery, re-fires on re-trigger)
-- **`test_web_dashboard.py`** (6) — lifecycle resource management: deactivate stops Flask, cleanup destroys subscriptions, `_stop_flask` shuts down server and clears refs, no-op when server not running, no-op start when already running, Flask thread startup
+- **`test_adaptive_behavior.py`** (22): all three rules in isolation and combined, restoration paths, threshold oscillation, partial/empty windows, ping-pong regression
+- **`test_metrics_collector.py`** (29): `compute_accuracy` and `compute_efficiency` purity, None-pose handling, zero-distance edge case, UUID-based preemption classification, ABORTED vs CANCELED branching
+- **`test_data_logger.py`** (11): CSV writing, malformed JSON handling, all four alert thresholds at boundary conditions, and alert deduplication (fires once, clears on recovery, re-fires on re-trigger)
+- **`test_web_dashboard.py`** (6): lifecycle resource management covering deactivate stops Flask, cleanup destroys subscriptions, `_stop_flask` shuts down server and clears refs, no-op when server not running, no-op start when already running, and Flask thread startup
 
 ---
 
@@ -328,12 +328,12 @@ Image tag: `coenanr/tbot3_nav_monitor:latest`.
 
 ## 13. Implementation notes
 
-- **Lifecycle nodes** are used wherever the node has external dependencies (Nav2, TF, action server, Flask) — `on_configure` creates subscriptions, `on_activate` starts timers, ensuring clean startup ordering.
+- **Lifecycle nodes** are used wherever the node has external dependencies (Nav2, TF, action server, Flask). The `on_configure` method creates subscriptions and `on_activate` starts timers, ensuring clean startup ordering.
 - **Path efficiency** is computed as `‖target − start‖ / actual_path_length`, snapshotting `target` and `start` at goal-start so a preempting manual goal cannot corrupt the metric of the goal it preempted.
-- **Battery** is a fictional metric drained linearly with distance travelled (0.05 % per metre) — included to satisfy the assignment's required metric set; not derived from any real sensor.
+- **Battery** is a fictional metric drained linearly with distance travelled (0.05 % per metre). It is included to satisfy the assignment's required metric set and is not derived from any real sensor.
 - **CSV logging** writes 2 Hz time-series; the `/api/summary` endpoint filters this down to one row per completed goal for analysis (detecting `goals_completed` increments via pandas `diff().fillna(0) > 0`).
-- **Cross-container DDS** uses `ipc: host` + a shared `/dev/shm` mount so FastDDS shared-memory transport works between the `sim` and `monitor` services on a bridge network — required for ROS2 actions to discover across containers.
-- **Manual goal interruption** is purely additive: `waypoint_patrol` subscribes to `/goal_pose` and `/navigate_to_pose/_action/status` and never cancels Nav2 itself — it only refrains from sending the next patrol goal until the action server is idle again.
+- **Cross-container DDS** uses `ipc: host` and a shared `/dev/shm` mount so FastDDS shared-memory transport works between the `sim` and `monitor` services on a bridge network. This is required for ROS2 actions to discover across containers.
+- **Manual goal interruption** is purely additive. The `waypoint_patrol` node subscribes to `/goal_pose` and `/navigate_to_pose/_action/status` and never cancels Nav2 itself. It only refrains from sending the next patrol goal until the action server is idle again.
 
 ---
 
