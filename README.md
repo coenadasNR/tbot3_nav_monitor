@@ -371,4 +371,4 @@ Image tag: `coenanr/tbot3_nav_monitor:latest`.
 
 ## License
 
-Apache-2.0. See `src/tbot3_nav_monitor/package.xml`.
+Apache-2.0. See [LICENSE](LICENSE).
